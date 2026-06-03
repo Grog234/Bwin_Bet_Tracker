@@ -17,6 +17,7 @@ fixtures_cache.json
 
 # Zugangsdaten & Secrets
 users.json
+config.php
 
 # Logs
 *.log
