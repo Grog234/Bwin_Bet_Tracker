@@ -1039,6 +1039,8 @@ select.inp option{background:var(--surface);}
 .isel{font-size:11px;font-weight:500;border:0.5px solid var(--sep);background:var(--surface2);color:var(--t1);border-radius:var(--r-sm);padding:4px 7px;cursor:pointer;outline:none;font-family:var(--font);}
 .delbtn{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--t3);cursor:pointer;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
 .delbtn:hover{background:var(--red-s);color:var(--red);}
+.editbtn{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--t3);cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.editbtn:hover{background:var(--blue-s);color:var(--blue);}
 
 /* FORMS */
 .fc{padding:0;}
@@ -1435,13 +1437,18 @@ select.inp option{background:var(--surface);}
 .wm-br-col{display:flex;flex-direction:column;min-width:160px;padding:0 6px;}
 .wm-br-col-hdr{text-align:center;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;padding:0 4px 10px;white-space:nowrap;}
 .wm-br-matches{display:flex;flex-direction:column;justify-content:space-around;height:100%;}
-.wm-ko{background:var(--surface);border:0.5px solid var(--sep);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh0);margin:4px 0;cursor:pointer;transition:border-color 0.15s;}
+.wm-ko{background:var(--surface);border:0.5px solid var(--sep);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh0);margin:4px 0;transition:border-color 0.15s;}
 .wm-ko:hover{border-color:#16a34a;}
 .wm-ko-t{padding:6px 10px;font-size:11px;font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:4px;min-height:32px;}
 .wm-ko-t:first-child{border-bottom:0.5px solid var(--sep2);}
 .wm-ko-t.win{background:rgba(34,197,94,0.1);font-weight:700;color:var(--green);}
 .wm-ko-t.tbd{color:var(--t3);font-style:italic;}
+.wm-ko-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
 .wm-ko-sc{font-size:13px;font-weight:700;min-width:14px;text-align:center;font-variant-numeric:tabular-nums;}
+.wm-ko-inp{width:34px;text-align:center;padding:2px 3px;background:var(--surface2);border:0.5px solid var(--sep);border-radius:5px;color:var(--t1);font-family:var(--font);font-size:12px;font-weight:700;flex-shrink:0;}
+.wm-ko-inp:disabled{opacity:0.4;cursor:not-allowed;}
+.wm-ko-save{display:block;width:100%;padding:5px;font-size:10px;font-weight:600;border:none;background:#15803d;color:#fff;cursor:pointer;border-top:0.5px solid var(--sep2);transition:opacity 0.12s;}
+.wm-ko-save:hover{opacity:0.88;}
 .wm-ko-final{border:1.5px solid #d97706;box-shadow:0 0 12px rgba(217,119,6,0.2);}
 
 /* Champion */
@@ -2037,6 +2044,60 @@ select.inp option{background:var(--surface);}
   </div>
 </div>
 
+<!-- Bet bearbeiten -->
+<div class="acct-modal" id="edit-modal" hidden>
+  <div class="acct-backdrop" onclick="closeEditModal()"></div>
+  <div class="acct-card" role="dialog" aria-modal="true" aria-labelledby="edit-title" style="max-width:520px;">
+    <div class="acct-head">
+      <div class="acct-title" id="edit-title">Wette bearbeiten</div>
+      <button class="ib" onclick="closeEditModal()" title="Schließen" aria-label="Schließen">×</button>
+    </div>
+    <form id="edit-form" class="acct-form" autocomplete="off" onsubmit="return submitEditBet(event)">
+      <div id="edit-msg" class="acct-msg" hidden></div>
+      <input type="hidden" id="e-id">
+      <div class="fg fg2">
+        <div class="fl"><label class="lbl">Datum</label><input class="fi inp" type="date" id="e-date"></div>
+        <div class="fl"><label class="lbl">Kategorie / Sportart</label>
+          <select class="fi inp" id="e-sport">
+            <option>Fußball</option><option>Tennis</option><option>Basketball</option>
+            <option>Eishockey</option><option>American Football</option><option>Baseball</option>
+            <option>MMA / Boxen</option><option>Sonstiges</option>
+          </select>
+        </div>
+      </div>
+      <label class="lbl">Tipp / Beschreibung</label>
+      <input class="fi inp" type="text" id="e-desc">
+      <div class="fg fg2">
+        <div class="fl"><label class="lbl">Liga / Wettbewerb</label><input class="fi inp" type="text" id="e-league"></div>
+        <div class="fl"><label class="lbl">Markt</label>
+          <select class="fi inp" id="e-market">
+            <option>1X2</option><option>Über/Unter</option><option>Handicap</option>
+            <option>Beide Teams treffen</option><option>Ergebniswette</option>
+            <option>Outright</option><option>Sonstiges</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg fg3">
+        <div class="fl"><label class="lbl">Einsatz (€)</label><input class="fi inp" type="number" id="e-stake" step="0.01" min="0"></div>
+        <div class="fl"><label class="lbl">Quote</label><input class="fi inp" type="number" id="e-odds" step="0.01" min="1"></div>
+        <div class="fl"><label class="lbl">Status</label>
+          <select class="fi inp" id="e-status">
+            <option value="open">Offen</option><option value="won">Gewonnen</option>
+            <option value="lost">Verloren</option><option value="cashout">Cashout</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg fg2">
+        <div class="fl"><label class="lbl">Buchmacher</label><input class="fi inp" type="text" id="e-bookie"></div>
+        <div class="fl"><label class="lbl">Cashout-Betrag (€)</label><input class="fi inp" type="number" id="e-cashout" step="0.01" min="0"></div>
+      </div>
+      <label class="lbl">Notiz</label>
+      <input class="fi inp" type="text" id="e-note">
+      <button class="btn btn-p btn-full" type="submit" style="margin-top:16px;">Speichern</button>
+    </form>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -2171,6 +2232,58 @@ async function loadBets() {
 function exportCSV(){window.location.href='?a=export';}
 
 // ============================================================
+//  BET BEARBEITEN (Verlauf-Edit)
+// ============================================================
+function openEditBet(id){
+  const b = allBets.find(x => String(x.id) === String(id));
+  if (!b) { toast('Wette nicht gefunden'); return; }
+  document.getElementById('e-id').value      = b.id;
+  document.getElementById('e-date').value    = b.date || '';
+  document.getElementById('e-sport').value   = b.sport || 'Sonstiges';
+  document.getElementById('e-desc').value    = b.desc || '';
+  document.getElementById('e-league').value  = b.league || '';
+  document.getElementById('e-market').value  = b.market || 'Sonstiges';
+  document.getElementById('e-stake').value   = b.stake ?? '';
+  document.getElementById('e-odds').value    = b.odds ?? '';
+  document.getElementById('e-status').value  = b.status || 'open';
+  document.getElementById('e-bookie').value  = b.bookie || '';
+  document.getElementById('e-cashout').value = (b.cashout && parseFloat(b.cashout) > 0) ? b.cashout : '';
+  document.getElementById('e-note').value    = b.note || '';
+  const m = document.getElementById('edit-msg'); m.hidden = true;
+  document.getElementById('edit-modal').hidden = false;
+}
+function closeEditModal(){ document.getElementById('edit-modal').hidden = true; }
+async function submitEditBet(ev){
+  ev.preventDefault();
+  const id = document.getElementById('e-id').value;
+  const payload = {
+    id,
+    date:    document.getElementById('e-date').value,
+    sport:   document.getElementById('e-sport').value,
+    desc:    document.getElementById('e-desc').value,
+    league:  document.getElementById('e-league').value,
+    market:  document.getElementById('e-market').value,
+    stake:   document.getElementById('e-stake').value,
+    odds:    document.getElementById('e-odds').value,
+    status:  document.getElementById('e-status').value,
+    bookie:  document.getElementById('e-bookie').value,
+    cashout: document.getElementById('e-cashout').value || '0',
+    note:    document.getElementById('e-note').value,
+  };
+  const res = await api('upd', payload);
+  if (res && res.ok) {
+    closeEditModal();
+    toast('Wette aktualisiert');
+    await loadBets();
+  } else {
+    const m = document.getElementById('edit-msg');
+    m.textContent = 'Speichern fehlgeschlagen' + (res && res.error ? ': ' + res.error : '');
+    m.className = 'acct-msg err'; m.hidden = false;
+  }
+  return false;
+}
+
+// ============================================================
 //  CALCULATIONS — BWIN TAX (FIXED)
 //  tax_rate ist in der CSV als Dezimalzahl gespeichert (z.B. 0.05 für 5%)
 //  BWIN/DE-Wettsteuer = 5 % vom EINSATZ (nicht vom Gewinn!).
@@ -2298,7 +2411,7 @@ function updateMetrics() {
 // ============================================================
 //  BET ITEM HTML
 // ============================================================
-function betHTML(b, del=true) {
+function betHTML(b, del=true, edit=false) {
   // 'pnl' fuer die Anzeige ist immer 'mein Anteil' — Standard-Wetten haben
   // Anteil = 100% wenn ich Owner bin, sonst 0%.
   const pnl     = myPnLForBet(b);
@@ -2333,6 +2446,7 @@ function betHTML(b, del=true) {
               `<option value="${s}"${b.status===s?' selected':''}>${{won:'Gew.',lost:'Verl.',cashout:'Cashout'}[s]}</option>`
             ).join('')}
           </select>`}
+      ${edit?`<button class="editbtn" onclick="openEditBet('${b.id}')" title="Bearbeiten">✎</button>`:''}
       ${del?`<button class="delbtn" onclick="delBet('${b.id}')">×</button>`:''}
     </div>
   </div>`;
@@ -2490,6 +2604,18 @@ function mkChart(id,type,labels,data,colors,lineColor) {
 // ============================================================
 //  DASHBOARD
 // ============================================================
+// Sortierung wie auf der öffentlichen Seite: offene Bets zuerst, dann
+// verlorene/gewonnene (& Rest); innerhalb der Gruppe nach Datum + Erstellzeit
+// (id = Unix-Sekunde) absteigend.
+function betSortCmp(a, b) {
+  const ga = a.status === 'open' ? 0 : 1;
+  const gb = b.status === 'open' ? 0 : 1;
+  if (ga !== gb) return ga - gb;
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  const ia = parseInt(a.id, 10) || 0, ib = parseInt(b.id, 10) || 0;
+  return ib - ia;
+}
+
 function renderDash() {
   updateMetrics();
   const _mine = myBets();
@@ -2507,7 +2633,7 @@ function renderDash() {
   const mdat=mlbls.map(m=>+months[m].toFixed(2));
   mkChart('c-months','bar',mlbls.length?mlbls:['–'],mdat.length?mdat:[0],mdat.map(v=>v>=0?'#22c55e':'#f87171'),null);
 
-  const r=_mine.slice(0,8);
+  const r=[..._mine].sort(betSortCmp).slice(0,8);
   document.getElementById('dash-list').innerHTML=r.length?r.map(b=>betHTML(b,false)).join(''):'<div class="empty"><div class="empty-ico">📋</div>Noch keine Wetten</div>';
 }
 
@@ -2882,7 +3008,7 @@ function renderHist() {
   });
   const el=document.getElementById('hist-list');
   el.innerHTML=arr.length
-    ?`<div class="card">${arr.map(b=>betHTML(b,true)).join('')}</div>`
+    ?`<div class="card">${arr.map(b=>betHTML(b,true,true)).join('')}</div>`
     :'<div class="card"><div class="empty"><div class="empty-ico">🔍</div>Keine Wetten gefunden</div></div>';
 }
 
@@ -3384,6 +3510,7 @@ async function submitNewAccount(ev){
 // ESC schließt Modal
 document.addEventListener('keydown', (e)=>{
   if (e.key === 'Escape' && !document.getElementById('acct-modal').hidden) closeAccountModal();
+  if (e.key === 'Escape' && !document.getElementById('edit-modal').hidden) closeEditModal();
 });
 
 // ============================================================
@@ -3876,15 +4003,18 @@ function renderWMBracket() {
       const tbd1 = (t1==='?'||t1.includes('TBD'));
       const tbd2 = (t2==='?'||t2.includes('TBD'));
       const isFinal = round.id === 'final';
-      html += `<div class="wm-ko${isFinal?' wm-ko-final':''}" onclick="wmKoClick('${m.id}')">
+      const editable = !(t1==='?' || t2==='?');
+      const dis = editable ? '' : 'disabled';
+      html += `<div class="wm-ko${isFinal?' wm-ko-final':''}">
         <div class="wm-ko-t${w1?' win':''}${tbd1?' tbd':''}">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${t1}</span>
-          <span class="wm-ko-sc">${s1}</span>
+          <span class="wm-ko-name">${t1}</span>
+          <input class="wm-ko-inp" type="number" min="0" max="99" id="s1-${m.id}" value="${s1}" placeholder="–" ${dis}>
         </div>
         <div class="wm-ko-t${w2?' win':''}${tbd2?' tbd':''}">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${t2}</span>
-          <span class="wm-ko-sc">${s2}</span>
+          <span class="wm-ko-name">${t2}</span>
+          <input class="wm-ko-inp" type="number" min="0" max="99" id="s2-${m.id}" value="${s2}" placeholder="–" ${dis}>
         </div>
+        ${editable ? `<button class="wm-ko-save" onclick="wmSaveGame('${m.id}')">✓ Speichern</button>` : ''}
       </div>`;
     });
     html += '</div></div>';
