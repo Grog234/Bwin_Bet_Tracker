@@ -1,0 +1,23 @@
+# ============================================================
+#  Direktzugriff auf sensible Dateien sperren.
+#  daten.csv, lockouts.json, access.log und die .bak-Backups
+#  dürfen NICHT über das Web abgerufen werden.
+# ============================================================
+<FilesMatch "\.(csv|json|log|bak|tmp)$">
+    Require all denied
+</FilesMatch>
+
+# Backup-Verzeichnis dichtmachen.
+# <DirectoryMatch> ist in .htaccess NICHT erlaubt (Apache wirft sonst 500).
+# Stattdessen: RedirectMatch hier + eigene .htaccess in .backup/ als Backup-Schutz.
+RedirectMatch 403 (?i)/\.backup(/|$)
+
+# Apache-Listing aus
+Options -Indexes
+
+# config.php und auth.php sind zwar PHP, aber zur Sicherheit:
+<FilesMatch "^(config|auth)\.php$">
+    # PHP-Interpreter rendert sie weiterhin – Direktanfragen kommen nicht durch,
+    # weil sie nichts ausgeben. Trotzdem 403 für Bots:
+    Require all denied
+</FilesMatch>
