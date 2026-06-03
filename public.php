@@ -453,6 +453,17 @@ function setStatus(el, val) {
   render();
 }
 
+// ── Sortierung: offene Bets zuerst, dann verlorene/gewonnene (& Rest);
+//    innerhalb jeder Gruppe nach Datum + Erstellzeit (id = Unix-Sekunde) absteigend ──
+function betSortCmp(a, b) {
+  const ga = a.status === 'open' ? 0 : 1;
+  const gb = b.status === 'open' ? 0 : 1;
+  if (ga !== gb) return ga - gb;
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;   // neuere Datum zuerst
+  const ia = parseInt(a.id, 10) || 0, ib = parseInt(b.id, 10) || 0;
+  return ib - ia;                                            // neuere Erstellzeit zuerst
+}
+
 // ── Render feed ──
 function render() {
   const fSport  = document.getElementById('flt-sport').value;
@@ -463,7 +474,7 @@ function render() {
     if (fSport && b.sport !== fSport) return false;
     if (fUser  && b.user  !== fUser)  return false;
     return true;
-  });
+  }).sort(betSortCmp);
 
   const feed      = document.getElementById('feed');
   const feedEmpty = document.getElementById('feed-empty');
