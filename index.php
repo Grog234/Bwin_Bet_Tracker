@@ -1788,8 +1788,6 @@ select.inp option{background:var(--surface);}
     <div class="tool-card" id="streak-box"></div>
   </div>
 
-</div>
-
   <!-- ====================================================
        TAB: WM 2026
   ==================================================== -->
@@ -1842,6 +1840,8 @@ select.inp option{background:var(--surface);}
     </div>
 
   </div>
+
+</div>
 
 <!-- INVITES MODAL ================================================= -->
 <div class="inv-modal" id="inv-modal" hidden>
