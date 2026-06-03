@@ -45,7 +45,7 @@ if ($apiAction !== '') {
             if (ob_get_length() !== false) ob_clean();
             http_response_code(401); echo json_encode(['e'=>'auth']); exit;
         }
-        if (in_array($apiAction, ['add','del','upd','upd_status','change_pw','create_acct','invite_accept','invite_decline'], true)) {
+        if (in_array($apiAction, ['add','del','upd','upd_status','change_pw','create_acct','invite_accept','invite_decline','wm_save'], true)) {
             $body = json_decode(file_get_contents('php://input'), true) ?? [];
             if (!verifyCsrf($body['_csrf'] ?? '')) {
                 if (ob_get_length() !== false) ob_clean();
@@ -566,6 +566,24 @@ function getFixturesData(bool $forceRefresh = false): array {
     return $data;
 }
 
+// ============================================================
+//  WM DATA STORE — wm_data.json
+//  Speichert Spielergebnisse + Wetteinsätze pro WM-Spiel
+// ============================================================
+function wmDataRead(): array {
+    if (!file_exists(WM_DATA_FILE)) return [];
+    $raw = @file_get_contents(WM_DATA_FILE);
+    if ($raw === false) return [];
+    $data = json_decode($raw, true);
+    return is_array($data) ? $data : [];
+}
+
+function wmDataWrite(array $data): void {
+    $tmp = WM_DATA_FILE . '.tmp';
+    @file_put_contents($tmp, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+    @rename($tmp, WM_DATA_FILE);
+}
+
 function s(string $v): string { return htmlspecialchars(trim($v), ENT_QUOTES, 'UTF-8'); }
 function f(mixed $v, int $dec = 2, float $min = 0.0, float $max = 1e9): float {
     $n = is_numeric($v) ? (float)$v : 0.0;
@@ -769,6 +787,29 @@ function handleApi(string $a): void {
         invitesWrite($invites);
         echo json_encode(['ok'=>true]); return;
     }
+    if ($a === 'wm_load') {
+        echo json_encode(['ok' => true, 'data' => wmDataRead()]);
+        return;
+    }
+    if ($a === 'wm_save') {
+        $matchId = s($b['match_id'] ?? '');
+        if ($matchId === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'match_id fehlt']);
+            return;
+        }
+        $data = wmDataRead();
+        $data[$matchId] = [
+            'score1' => isset($b['score1']) && $b['score1'] !== '' ? (int)$b['score1'] : null,
+            'score2' => isset($b['score2']) && $b['score2'] !== '' ? (int)$b['score2'] : null,
+            'stake'  => isset($b['stake'])  && is_numeric($b['stake'])  ? (float)$b['stake']  : null,
+            'pnl'    => isset($b['pnl'])    && is_numeric($b['pnl'])    ? (float)$b['pnl']    : null,
+            'note'   => s($b['note'] ?? ''),
+        ];
+        wmDataWrite($data);
+        echo json_encode(['ok' => true]);
+        return;
+    }
     if ($a === 'teams') {
         echo json_encode(['teams' => teamsRead()]); return;
     }
@@ -873,7 +914,7 @@ select.inp option{background:var(--surface);}
 .tab:hover{color:var(--t1);}
 .tab.on{color:var(--blue);border-bottom-color:var(--blue);}
 .sec{display:none;}
-.sec.on{display:block;}
+.sec.on{display:block;overflow-x:hidden;}
 
 /* CARDS */
 .card{background:var(--surface);border-radius:var(--r-lg);border:0.5px solid var(--sep);box-shadow:var(--sh1);}
@@ -1258,6 +1299,95 @@ select.inp option{background:var(--surface);}
 @media (max-width:640px){
   .acct-card{padding:22px 20px;}
 }
+
+/* ============================================================
+   WM 2026 — Turnieroptik
+   ============================================================ */
+.wm-banner{display:flex;align-items:center;gap:12px;padding:18px 0 10px;margin-bottom:4px;position:relative;}
+.wm-banner::after{content:none;}
+.wm-banner-icon{font-size:28px;flex-shrink:0;line-height:1;}
+.wm-title{font-size:20px;font-weight:800;color:var(--t1);letter-spacing:-0.5px;}
+.wm-sub{font-size:12px;color:var(--t2);margin-top:3px;}
+.wm-tabs{display:flex;gap:0;border-bottom:0.5px solid var(--sep);margin-bottom:18px;overflow-x:auto;scrollbar-width:none;}
+.wm-tabs::-webkit-scrollbar{display:none;}
+.wm-tab{padding:10px 18px;font-size:13px;font-weight:500;border:none;background:transparent;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-0.5px;white-space:nowrap;font-family:var(--font);transition:color 0.15s;}
+.wm-tab.on{color:#16a34a;border-bottom-color:#16a34a;}
+.wm-panel{display:none;}
+.wm-panel.on{display:block;}
+
+/* Group grid */
+.wm-group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px;margin-bottom:18px;}
+.wm-group-card{background:var(--surface);border:0.5px solid var(--sep);border-radius:var(--r-lg);box-shadow:var(--sh1);overflow:hidden;}
+.wm-group-header{background:linear-gradient(135deg,#15803d,#22c55e);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;}
+.wm-group-name{font-size:13px;font-weight:700;color:#fff;letter-spacing:0.5px;}
+.wm-group-md{font-size:10px;color:rgba(255,255,255,0.7);font-weight:500;}
+
+/* Group table */
+.wm-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.wm-tbl th{font-weight:600;color:var(--t3);text-align:center;padding:7px 5px 5px;border-bottom:0.5px solid var(--sep);font-size:10px;text-transform:uppercase;letter-spacing:0.3px;}
+.wm-tbl th:first-child{text-align:left;padding-left:12px;}
+.wm-tbl td{padding:7px 5px;border-bottom:0.5px solid var(--sep2);text-align:center;font-variant-numeric:tabular-nums;font-size:12px;}
+.wm-tbl td:first-child{text-align:left;padding-left:12px;font-weight:600;display:flex;align-items:center;gap:5px;}
+.wm-tbl tr:last-child td{border-bottom:none;}
+.wm-tbl tr:nth-child(-n+2) td{background:rgba(34,197,94,0.05);}
+.wm-pos{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:9px;font-weight:700;flex-shrink:0;}
+.wm-p1{background:#fbbf24;color:#78350f;} .wm-p2{background:#9ca3af;color:#111;} .wm-p3{background:var(--surface3);color:var(--t2);} .wm-p4{background:var(--surface3);color:var(--t3);}
+.wm-pts{font-weight:700;color:var(--t1);}
+
+/* Game rows */
+.wm-games{border-top:0.5px solid var(--sep);padding:6px 0;}
+.wm-md-label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:0.4px;padding:4px 12px 2px;}
+.wm-game{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:11px;transition:background 0.1s;}
+.wm-game:hover{background:var(--surface2);}
+.wm-game-date{color:var(--t3);min-width:52px;flex-shrink:0;font-size:10px;}
+.wm-game-home{flex:1;text-align:right;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wm-game-away{flex:1;text-align:left;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wm-score-wrap{display:flex;align-items:center;gap:3px;flex-shrink:0;}
+.wm-sinp{width:30px;text-align:center;padding:3px 4px;background:var(--surface2);border:0.5px solid var(--sep);border-radius:6px;color:var(--t1);font-family:var(--font);font-size:12px;font-weight:700;}
+.wm-sinp:focus{border-color:#16a34a;box-shadow:0 0 0 2px rgba(22,163,74,0.2);outline:none;}
+.wm-ssep{color:var(--t3);font-weight:700;font-size:11px;}
+.wm-sbtn{padding:3px 7px;font-size:10px;font-weight:600;border:none;border-radius:5px;background:#15803d;color:#fff;cursor:pointer;white-space:nowrap;transition:opacity 0.12s;flex-shrink:0;}
+.wm-sbtn:hover{opacity:0.85;}
+.wm-bbtn{padding:3px 7px;font-size:10px;font-weight:600;border:0.5px solid var(--sep);border-radius:5px;background:var(--surface2);color:var(--t2);cursor:pointer;flex-shrink:0;transition:all 0.12s;}
+.wm-bbtn:hover{background:var(--blue-s);color:var(--blue);border-color:var(--blue);}
+.wm-played{color:var(--green);font-weight:700;font-size:12px;padding:0 4px;}
+
+/* Bracket */
+.wm-bracket-outer{overflow-x:auto;padding-bottom:8px;max-width:100%;}
+.wm-bracket{display:flex;gap:0;padding:12px 0;}
+.wm-br-col{display:flex;flex-direction:column;min-width:160px;padding:0 6px;}
+.wm-br-col-hdr{text-align:center;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;padding:0 4px 10px;white-space:nowrap;}
+.wm-br-matches{display:flex;flex-direction:column;justify-content:space-around;height:100%;}
+.wm-ko{background:var(--surface);border:0.5px solid var(--sep);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh0);margin:4px 0;cursor:pointer;transition:border-color 0.15s;}
+.wm-ko:hover{border-color:#16a34a;}
+.wm-ko-t{padding:6px 10px;font-size:11px;font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:4px;min-height:32px;}
+.wm-ko-t:first-child{border-bottom:0.5px solid var(--sep2);}
+.wm-ko-t.win{background:rgba(34,197,94,0.1);font-weight:700;color:var(--green);}
+.wm-ko-t.tbd{color:var(--t3);font-style:italic;}
+.wm-ko-sc{font-size:13px;font-weight:700;min-width:14px;text-align:center;font-variant-numeric:tabular-nums;}
+.wm-ko-final{border:1.5px solid #d97706;box-shadow:0 0 12px rgba(217,119,6,0.2);}
+
+/* Champion */
+.wm-champion{background:linear-gradient(135deg,#78350f,#d97706,#fbbf24);border-radius:var(--r-xl);padding:18px 22px;text-align:center;margin-bottom:16px;}
+.wm-champ-lbl{font-size:11px;font-weight:600;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.wm-champ-name{font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.5px;}
+.wm-champ-sub{font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;}
+
+/* WM Bet form inside match */
+.wm-bet-form{background:var(--surface2);border-top:0.5px solid var(--sep);padding:8px 12px;display:none;}
+.wm-bet-form.open{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.wm-bet-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.wm-binp{width:72px;padding:4px 8px;background:var(--surface);border:0.5px solid var(--sep);border-radius:6px;color:var(--t1);font-family:var(--font);font-size:12px;}
+.wm-binp:focus{border-color:var(--blue);outline:none;}
+
+/* Responsive */
+@media(max-width:640px){
+  .wm-group-grid{grid-template-columns:1fr;}
+  .wm-banner{padding:14px 0 8px;}
+  .wm-title{font-size:16px;}
+  .wm-bracket{min-width:680px;}
+  .wm-br-col{min-width:130px;}
+}
 </style>
 </head>
 <body>
@@ -1327,12 +1457,11 @@ select.inp option{background:var(--surface);}
 
   <!-- METRICS -->
   <div class="mtr-grid" id="mtr-grid">
-    <div class="mtr"><div class="mtr-lbl">P&L Gesamt</div><div class="mtr-val cn" id="m-pnl">–</div><div class="mtr-sub">nach Tax</div></div>
+    <div class="mtr"><div class="mtr-lbl">P&L Gesamt</div><div class="mtr-val cn" id="m-pnl">–</div><div class="mtr-sub">abgeschl. Wetten</div></div>
     <div class="mtr"><div class="mtr-lbl">ROI</div><div class="mtr-val cn" id="m-roi">–</div><div class="mtr-sub" id="m-roi-s">abgeschl. Wetten</div></div>
     <div class="mtr"><div class="mtr-lbl">Trefferquote</div><div class="mtr-val cn" id="m-win">–</div><div class="mtr-sub" id="m-win-s">–</div></div>
     <div class="mtr"><div class="mtr-lbl">Ø Quote</div><div class="mtr-val cn" id="m-odds">–</div><div class="mtr-sub">gewonnene</div></div>
     <div class="mtr"><div class="mtr-lbl">Einsatz Total</div><div class="mtr-val cn" id="m-stake">–</div><div class="mtr-sub" id="m-stake-s">offen: –</div></div>
-    <div class="mtr"><div class="mtr-lbl">BWIN Tax</div><div class="mtr-val ca" id="m-tax">–</div><div class="mtr-sub">bezahlt</div></div>
   </div>
 
   <!-- TABS -->
@@ -1345,6 +1474,7 @@ select.inp option{background:var(--surface);}
     <button class="tab"     onclick="go('hist')">Verlauf</button>
     <button class="tab"     onclick="go('stats')">Statistiken</button>
     <button class="tab"     onclick="go('tools')">Tools</button>
+    <button class="tab"     onclick="go('wm')">🏆 WM 2026</button>
   </div>
 
   <!-- ====================================================
@@ -1390,8 +1520,6 @@ select.inp option{background:var(--surface);}
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="chw chw-200"><canvas id="c-bankroll"></canvas></div>
     </div>
-    <div class="sh">BWIN Tax-Übersicht</div>
-    <div class="txbox taxbar" id="tax-box"></div>
     <div class="sh">Monats-Performance</div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="chw chw-160"><canvas id="c-months"></canvas></div>
@@ -1482,14 +1610,13 @@ select.inp option{background:var(--surface);}
         </div>
         <div class="fg fg3">
           <div class="fl"><label>Buchmacher</label>
-            <select class="fi" id="f-bookie" onchange="syncTax()">
-              <option data-tax="5">BWIN (5% Tax)</option>
+            <select class="fi" id="f-bookie">
+              <option data-tax="0">BWIN</option>
               <option data-tax="0">Bet365</option><option data-tax="0">Tipico</option>
               <option data-tax="0">Unibet</option><option data-tax="0">Betway</option>
               <option data-tax="0">Interwetten</option><option data-tax="0">Sonstiges</option>
             </select>
           </div>
-          <div class="fl"><label>Tax-Rate (%) <span class="t3-hint">(auf Gewinn, anpassbar)</span></label><input class="fi" type="number" id="f-tax" value="5" step="0.1" min="0" max="50" oninput="liveCalc()"></div>
           <div class="fl"><label>Cashout (€)</label><input class="fi" type="number" id="f-cashout" placeholder="optional" step="0.01" min="0"></div>
         </div>
         <div class="fg fg1">
@@ -1519,7 +1646,7 @@ select.inp option{background:var(--surface);}
         <div class="fl"><label>Einsatz (€)</label><input class="fi" type="number" id="k-stake" placeholder="10.00" step="0.01" oninput="calcKombi()"></div>
         <div class="fl"><label>Buchmacher</label>
           <select class="fi" id="k-bookie" onchange="calcKombi()">
-            <option data-tax="5">BWIN (5%)</option><option data-tax="0">Bet365</option>
+            <option data-tax="0">BWIN</option><option data-tax="0">Bet365</option>
             <option data-tax="0">Tipico</option><option data-tax="0">Sonstiges</option>
           </select>
         </div>
@@ -1546,7 +1673,7 @@ select.inp option{background:var(--surface);}
       </select>
       <select class="fsel" id="flt-bookie" onchange="renderHist()">
         <option value="">Alle Buchmacher</option>
-        <option>BWIN (5% Tax)</option><option>Bet365</option><option>Tipico</option>
+        <option>BWIN</option><option>Bet365</option><option>Tipico</option>
         <option>Unibet</option><option>Betway</option><option>Sonstiges</option>
       </select>
       <select class="fsel" id="flt-user" onchange="renderHist()">
@@ -1581,7 +1708,7 @@ select.inp option{background:var(--surface);}
     <div class="sh">Nach Buchmacher</div>
     <div class="card" style="margin-bottom:16px;overflow:auto;">
       <table class="stbl"><thead><tr>
-        <th>Buchmacher</th><th>Wetten</th><th>Einsatz</th><th>P&L</th><th>ROI</th><th>Tax</th>
+        <th>Buchmacher</th><th>Wetten</th><th>Einsatz</th><th>P&L</th><th>ROI</th>
       </tr></thead><tbody id="tb-bookie"></tbody></table>
     </div>
     <div class="sh">Nach Nutzer</div>
@@ -1638,14 +1765,6 @@ select.inp option{background:var(--surface);}
         <div class="crow" style="border-top:0.5px solid var(--sep);padding-top:8px;margin-top:4px;font-weight:600;font-size:14px;"><span class="clbl">Quarter-Kelly (konservativ)</span><span class="cval cg" id="kl-qtr">–</span></div>
       </div>
     </div>
-    <div class="sh">BWIN Tax-Rechner</div>
-    <div class="tool-card">
-      <div class="fg fg2" style="margin-bottom:0;">
-        <div class="fl"><label>Einsatz (€)</label><input class="fi" type="number" id="tx-stake" placeholder="10.00" step="0.01" oninput="calcTax()"></div>
-        <div class="fl"><label>Quote</label><input class="fi" type="number" id="tx-odds" placeholder="2.50" step="0.01" oninput="calcTax()"></div>
-      </div>
-      <div class="txbox" id="tx-res" style="display:none;margin-top:12px;"></div>
-    </div>
     <div class="sh">Quote umrechnen</div>
     <div class="tool-card">
       <div class="fg fg2" style="margin-bottom:0;">
@@ -1670,6 +1789,59 @@ select.inp option{background:var(--surface);}
   </div>
 
 </div>
+
+  <!-- ====================================================
+       TAB: WM 2026
+  ==================================================== -->
+  <div class="sec" id="sec-wm">
+
+    <!-- WM Banner -->
+    <div class="wm-banner">
+      <div class="wm-banner-icon">⚽</div>
+      <div>
+        <div class="wm-title">FIFA WM 2026</div>
+        <div class="wm-sub">USA · Mexiko · Kanada &nbsp;·&nbsp; 11. Juni – 19. Juli 2026</div>
+      </div>
+    </div>
+
+    <!-- WM Dashboard Metrics -->
+    <div class="mtr-grid" id="wm-mtr">
+      <div class="mtr"><div class="mtr-lbl">WM P&amp;L</div><div class="mtr-val cn" id="wm-m-pnl">–</div><div class="mtr-sub">eigene WM-Wetten</div></div>
+      <div class="mtr"><div class="mtr-lbl">Trefferquote WM</div><div class="mtr-val cn" id="wm-m-wr">–</div><div class="mtr-sub" id="wm-m-wr-s">abgeschl. Wetten</div></div>
+      <div class="mtr"><div class="mtr-lbl">Spiele gespielt</div><div class="mtr-val cn" id="wm-m-played">–</div><div class="mtr-sub" id="wm-m-open">offen: –</div></div>
+      <div class="mtr"><div class="mtr-lbl">Weltmeister</div><div class="mtr-val" id="wm-m-champ" style="font-size:14px;">–</div><div class="mtr-sub">laut Turnierstand</div></div>
+    </div>
+
+    <!-- WM Sub-Tabs -->
+    <div class="wm-tabs">
+      <button class="wm-tab on"  onclick="wmTab('groups')">⚽ Gruppen</button>
+      <button class="wm-tab"     onclick="wmTab('bracket')">🏆 Turnierbaum</button>
+      <button class="wm-tab"     onclick="wmTab('bets')">💰 WM-Wetten</button>
+    </div>
+
+    <!-- PANEL: Gruppen -->
+    <div class="wm-panel on" id="wm-panel-groups">
+      <div id="wm-groups-container">
+        <div class="empty"><div class="empty-ico">⚽</div>Lade WM-Daten…</div>
+      </div>
+    </div>
+
+    <!-- PANEL: Turnierbaum -->
+    <div class="wm-panel" id="wm-panel-bracket">
+      <div id="wm-champion-box"></div>
+      <div class="wm-bracket-outer">
+        <div class="wm-bracket" id="wm-bracket-container"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: WM-Wetten -->
+    <div class="wm-panel" id="wm-panel-bets">
+      <div id="wm-bets-container">
+        <div class="empty"><div class="empty-ico">💰</div>Lade WM-Wetten…</div>
+      </div>
+    </div>
+
+  </div>
 
 <!-- INVITES MODAL ================================================= -->
 <div class="inv-modal" id="inv-modal" hidden>
@@ -1805,7 +1977,7 @@ function setUser(u) {
 // ============================================================
 //  TABS
 // ============================================================
-const TAB_IDS = ['kalender','dash','spiele','add','kombi','hist','stats','tools'];
+const TAB_IDS = ['kalender','dash','spiele','add','kombi','hist','stats','tools','wm'];
 
 function go(id) {
   document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',TAB_IDS[i]===id));
@@ -1818,6 +1990,7 @@ function go(id) {
   if (id==='stats')    renderStats();
   if (id==='tools')    renderTools();
   if (id==='kombi')    initKombi();
+  if (id==='wm')       renderWM();
 }
 
 // ============================================================
@@ -1971,18 +2144,12 @@ function updateMetrics() {
   const winRate    = settled.length ? won.length/settled.length*100 : 0;
   const avgOdds    = won.length ? won.reduce((s,b)=>s+(+b.odds),0)/won.length : 0;
   // Tax anteilig nach myShareFraction
-  const taxPaid    = won.reduce((s,b)=>{
-    const r = taxedReturn(+b.stake,+b.odds,+b.tax_rate||0);
-    return s + (r.tax * getMyShareFraction(b));
-  }, 0);
-
   const set=(id,v,cls)=>{const e=document.getElementById(id);e.textContent=v;e.className='mtr-val '+cls;};
   set('m-pnl',   fmtPnL(pnl),         pnl>=0?'cg':'cr');
   set('m-roi',   roi.toFixed(1)+'%',   roi>=0?'cg':'cr');
   set('m-win',   winRate.toFixed(0)+'%','cb');
   set('m-odds',  avgOdds.toFixed(2)+'x','cn');
   set('m-stake', fmtAbs(allStake),     'cn');
-  set('m-tax',   fmtAbs(taxPaid),      'ca');
   document.getElementById('m-stake-s').textContent='offen: '+fmtAbs(openStake);
   document.getElementById('m-win-s').textContent=won.length+'/'+settled.length+' abg.';
   document.getElementById('m-roi-s').textContent='aus '+settled.length+' Wetten';
@@ -2004,12 +2171,11 @@ function betHTML(b, del=true) {
   const sharedBadge = shared ? `<span class="shared-badge" title="Geteilte Wette — dein Anteil">⤞ ${(myFrac*100).toFixed(0)}%</span>` : '';
   const ico  = EMOJI[b.sport]||'🎯';
   const ibg  = SPORT_BG[b.sport]||'rgba(100,100,120,0.10)';
-  const tax  = +b.tax_rate>0 ? ` · Tax ${(+b.tax_rate*100).toFixed(0)}%` : '';
   return `<div class="li">
     <div class="li-ico" style="background:${ibg};">${ico}</div>
     <div class="li-body">
       <div class="li-title">${b.desc}${sharedBadge}</div>
-      <div class="li-sub">${b.date} · ${b.sport} · ${b.bookie}${tax} · ${(+b.odds).toFixed(2)}x · ${(+b.stake).toFixed(2)} € · ${b.user}</div>
+      <div class="li-sub">${b.date} · ${b.sport} · ${b.bookie} · ${(+b.odds).toFixed(2)}x · ${(+b.stake).toFixed(2)} € · ${b.user}</div>
     </div>
     <div class="li-right">
       <div>
@@ -2201,16 +2367,6 @@ function renderDash() {
   const mdat=mlbls.map(m=>+months[m].toFixed(2));
   mkChart('c-months','bar',mlbls.length?mlbls:['–'],mdat.length?mdat:[0],mdat.map(v=>v>=0?'#22c55e':'#f87171'),null);
 
-  // Tax-Box: nur eigene gewonnene Wetten, anteilig nach myShareFraction.
-  const wonB=_mine.filter(b=>b.status==='won');
-  const gross=wonB.reduce((s,b)=>{ const r=taxedReturn(+b.stake,+b.odds,+b.tax_rate||0); return s+(r.profit*getMyShareFraction(b)); },0);
-  const tax=wonB.reduce((s,b)=>{ const r=taxedReturn(+b.stake,+b.odds,+b.tax_rate||0); return s+(r.tax*getMyShareFraction(b)); },0);
-  const net=gross-tax;
-  document.getElementById('tax-box').innerHTML=`
-    <div class="txrow"><span style="color:var(--t2)">Brutto-Gewinn vor Tax</span><span style="font-weight:500">${fmtAbs(gross)}</span></div>
-    <div class="txrow"><span style="color:var(--t2)">BWIN Tax bezahlt</span><span style="color:var(--amber);font-weight:500">− ${fmtAbs(tax)}</span></div>
-    <div class="txrow ttl"><span>Netto-Gewinn</span><span style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${net.toFixed(2)} €</span></div>`;
-
   const r=_mine.slice(0,8);
   document.getElementById('dash-list').innerHTML=r.length?r.map(b=>betHTML(b,false)).join(''):'<div class="empty"><div class="empty-ico">📋</div>Noch keine Wetten</div>';
 }
@@ -2381,28 +2537,19 @@ function prefill(id, outcome) {
 //  Im Formular: Nutzer gibt z.B. "5" ein → /100 = 0.05
 // ============================================================
 function liveCalc() {
-  const stake   = +document.getElementById('f-stake').value;
-  const odds    = +document.getElementById('f-odds').value;
-  const taxRate = +document.getElementById('f-tax').value / 100; // Formular: % → Dezimal
-  const box     = document.getElementById('cbox');
+  const stake = +document.getElementById('f-stake').value;
+  const odds  = +document.getElementById('f-odds').value;
+  const box   = document.getElementById('cbox');
   if (stake>0 && odds>=1) {
-    const r = taxedReturn(stake, odds, taxRate);
+    const gross  = stake * odds;
+    const profit = gross - stake;
     box.classList.add('show');
     document.getElementById('cbox-content').innerHTML=`
-      <div class="crow"><span class="clbl">Brutto-Auszahlung</span><span class="cval">${fmtAbs(r.gross)}</span></div>
-      <div class="crow"><span class="clbl">Brutto-Gewinn</span><span class="cval">+${fmtAbs(r.profit)}</span></div>
-      ${taxRate>0?`<div class="crow"><span class="clbl">BWIN Tax (${(taxRate*100).toFixed(0)}%)</span><span class="cval ca">− ${fmtAbs(r.tax)}</span></div>`:''}
-      <div class="crow"><span class="clbl">Netto-Auszahlung</span><span class="cval cg">${fmtAbs(r.net)}</span></div>`;
+      <div class="crow"><span class="clbl">Auszahlung</span><span class="cval">${fmtAbs(gross)}</span></div>
+      <div class="crow"><span class="clbl">Gewinn</span><span class="cval cg">+${fmtAbs(profit)}</span></div>`;
   } else {
     box.classList.remove('show');
   }
-}
-
-function syncTax() {
-  const sel=document.getElementById('f-bookie');
-  const tax=sel.options[sel.selectedIndex].dataset.tax||'0';
-  document.getElementById('f-tax').value=tax;
-  liveCalc();
 }
 
 // ============================================================
@@ -2509,7 +2656,7 @@ async function saveBet() {
     status:  document.getElementById('f-status').value,
     bookie:  document.getElementById('f-bookie').value,
     note:    document.getElementById('f-note').value,
-    tax_rate: +document.getElementById('f-tax').value / 100, // % → Dezimal speichern
+    tax_rate: 0,
     cashout: +document.getElementById('f-cashout').value||0,
     combo_id:'',
     user:    activeUser,
@@ -2536,7 +2683,6 @@ function resetForm() {
   if (sh && sh.checked) { sh.checked = false; toggleSharedForm(); }
   const stakeInp = document.getElementById('f-stake'); if (stakeInp) stakeInp.readOnly = false;
   document.getElementById('f-status').value='open';
-  document.getElementById('f-tax').value='5';
   document.getElementById('cbox').classList.remove('show');
   document.getElementById('f-err').textContent='';
 }
@@ -2681,10 +2827,9 @@ function renderStats() {
     ?Object.entries(bm).map(([k,r])=>{
         const roi=r.stake>0?r.pnl/r.stake*100:0;
         return `<tr><td>${k}</td><td>${r.cnt}</td><td>${fmtAbs(r.stake)}</td>
-          <td class="${pcls(r.pnl)}">${fmtPnL(r.pnl)}</td><td class="${pcls(roi)}">${roi.toFixed(1)}%</td>
-          <td style="color:var(--amber)">${fmtAbs(r.tax)}</td></tr>`;
+          <td class="${pcls(r.pnl)}">${fmtPnL(r.pnl)}</td><td class="${pcls(roi)}">${roi.toFixed(1)}%</td></tr>`;
       }).join('')
-    :nodata(6);
+    :nodata(5);
 
   const um=groupBy('user');
   document.getElementById('tb-user').innerHTML=Object.keys(um).length
@@ -2766,13 +2911,13 @@ function calcKombi() {
     box.innerHTML=`<div class="crow"><span class="clbl">Gesamt-Quote</span><span class="cval">${combo.toFixed(2)}x</span></div>`;
     return;
   }
-  const r=taxedReturn(stake,combo,tax);
+  const gross = stake * combo;
+  const profit = gross - stake;
   box.innerHTML=`
     <div class="crow"><span class="clbl">Gesamt-Quote (${valid.length} Tipps)</span><span class="cval">${combo.toFixed(2)}x</span></div>
     <div class="crow"><span class="clbl">Einsatz</span><span class="cval">${fmtAbs(stake)}</span></div>
-    <div class="crow"><span class="clbl">Brutto-Gewinn</span><span class="cval">+${fmtAbs(r.profit)}</span></div>
-    ${tax>0?`<div class="crow"><span class="clbl">BWIN Tax (${(tax*100).toFixed(0)}%)</span><span class="cval ca">− ${fmtAbs(r.tax)}</span></div>`:''}
-    <div class="crow"><span class="clbl">Netto-Auszahlung</span><span class="cval cg">${fmtAbs(r.net)}</span></div>`;
+    <div class="crow"><span class="clbl">Auszahlung</span><span class="cval cg">${fmtAbs(gross)}</span></div>
+    <div class="crow"><span class="clbl">Gewinn</span><span class="cval cg">+${fmtAbs(profit)}</span></div>`;
 }
 
 async function saveKombi() {
@@ -2912,6 +3057,7 @@ function renderAll() {
     if(id==='hist')     renderHist();
     if(id==='stats')    renderStats();
     if(id==='tools')    renderTools();
+    if(id==='wm')       renderWMMetrics();
   } else { renderKalender(); }
 }
 
@@ -3098,6 +3244,458 @@ async function submitNewAccount(ev){
 document.addEventListener('keydown', (e)=>{
   if (e.key === 'Escape' && !document.getElementById('acct-modal').hidden) closeAccountModal();
 });
+
+// ============================================================
+//  WM 2026 — FIFA Weltmeisterschaft
+// ============================================================
+
+// --- Gruppen-Definition ---
+const WM_GROUPS = {
+  A:{name:'Gruppe A',teams:['USA','Panama','Bolivien','Albanien']},
+  B:{name:'Gruppe B',teams:['Mexiko','Jamaika','Venezuela','Neuseeland']},
+  C:{name:'Gruppe C',teams:['Kanada','Honduras','Uruguay','Marokko']},
+  D:{name:'Gruppe D',teams:['Brasilien','Ecuador','Japan','Algerien']},
+  E:{name:'Gruppe E',teams:['Argentinien','Chile','Kolumbien','Senegal']},
+  F:{name:'Gruppe F',teams:['Deutschland','Österreich','Schweiz','Südkorea']},
+  G:{name:'Gruppe G',teams:['Frankreich','Belgien','Dänemark','Elfenbeinküste']},
+  H:{name:'Gruppe H',teams:['Spanien','Portugal','Niederlande','Ägypten']},
+  I:{name:'Gruppe I',teams:['England','Schottland','Türkei','Iran']},
+  J:{name:'Gruppe J',teams:['Italien','Serbien','Tschechien','Australien']},
+  K:{name:'Gruppe K',teams:['Kroatien','Ukraine','Ungarn','Nigeria']},
+  L:{name:'Gruppe L',teams:['Polen','Rumänien','Georgien','Indonesien']},
+};
+
+// Spielplan generieren: 6 Spiele pro Gruppe (MD1: 0-1/2-3, MD2: 0-2/1-3, MD3: 0-3/1-2)
+const WM_SCHEDULE = (function(){
+  const sched = [];
+  const gKeys = Object.keys(WM_GROUPS);
+  gKeys.forEach((gk, gi) => {
+    const t = WM_GROUPS[gk].teams;
+    const md1 = 11 + Math.floor(gi/2);
+    const md2 = 17 + Math.floor(gi/2);
+    const md3 = 24 + Math.floor(gi/3);
+    const dpad = d => String(d).padStart(2,'0');
+    const dates = [
+      `2026-06-${dpad(md1)}`,`2026-06-${dpad(md1)}`,
+      `2026-06-${dpad(md2)}`,`2026-06-${dpad(md2)}`,
+      `2026-06-${dpad(md3)}`,`2026-06-${dpad(md3)}`,
+    ];
+    const times = ['18:00','21:00','18:00','21:00','18:00','21:00'];
+    const pairs = [[0,1],[2,3],[0,2],[1,3],[0,3],[1,2]];
+    const mds   = [1,1,2,2,3,3];
+    pairs.forEach(([a,b], idx) => {
+      sched.push({id:`g${gk}${idx+1}`,group:gk,date:dates[idx],time:times[idx],md:mds[idx],t1:t[a],t2:t[b]});
+    });
+  });
+  return sched;
+})();
+
+// K.o.-Runden Template
+const WM_KO = [
+  {id:'r32', label:'Runde der letzten 32', date:'28. Juni – 2. Juli', matches:[
+    {id:'r32_1', p1:'1A',p2:'2B'},{id:'r32_2', p1:'1B',p2:'2A'},
+    {id:'r32_3', p1:'1C',p2:'2D'},{id:'r32_4', p1:'1D',p2:'2C'},
+    {id:'r32_5', p1:'1E',p2:'2F'},{id:'r32_6', p1:'1F',p2:'2E'},
+    {id:'r32_7', p1:'1G',p2:'2H'},{id:'r32_8', p1:'1H',p2:'2G'},
+    {id:'r32_9', p1:'1I',p2:'2J'},{id:'r32_10',p1:'1J',p2:'2I'},
+    {id:'r32_11',p1:'1K',p2:'2L'},{id:'r32_12',p1:'1L',p2:'2K'},
+    {id:'r32_13',p1:'3.Gr.(TBD)',p2:'3.Gr.(TBD)'},{id:'r32_14',p1:'3.Gr.(TBD)',p2:'3.Gr.(TBD)'},
+    {id:'r32_15',p1:'3.Gr.(TBD)',p2:'3.Gr.(TBD)'},{id:'r32_16',p1:'3.Gr.(TBD)',p2:'3.Gr.(TBD)'},
+  ]},
+  {id:'r16', label:'Achtelfinale', date:'3.–6. Juli', matches:[
+    {id:'r16_1',p1:'W:r32_1', p2:'W:r32_2'},{id:'r16_2',p1:'W:r32_3', p2:'W:r32_4'},
+    {id:'r16_3',p1:'W:r32_5', p2:'W:r32_6'},{id:'r16_4',p1:'W:r32_7', p2:'W:r32_8'},
+    {id:'r16_5',p1:'W:r32_9', p2:'W:r32_10'},{id:'r16_6',p1:'W:r32_11',p2:'W:r32_12'},
+    {id:'r16_7',p1:'W:r32_13',p2:'W:r32_14'},{id:'r16_8',p1:'W:r32_15',p2:'W:r32_16'},
+  ]},
+  {id:'qf', label:'Viertelfinale', date:'9.–10. Juli', matches:[
+    {id:'qf_1',p1:'W:r16_1',p2:'W:r16_2'},{id:'qf_2',p1:'W:r16_3',p2:'W:r16_4'},
+    {id:'qf_3',p1:'W:r16_5',p2:'W:r16_6'},{id:'qf_4',p1:'W:r16_7',p2:'W:r16_8'},
+  ]},
+  {id:'sf', label:'Halbfinale', date:'14.–15. Juli', matches:[
+    {id:'sf_1',p1:'W:qf_1',p2:'W:qf_2'},{id:'sf_2',p1:'W:qf_3',p2:'W:qf_4'},
+  ]},
+  {id:'tp', label:'Spiel um Platz 3', date:'18. Juli', matches:[
+    {id:'tp_1',p1:'L:sf_1',p2:'L:sf_2'},
+  ]},
+  {id:'final', label:'🏆 Finale', date:'19. Juli', matches:[
+    {id:'final_1',p1:'W:sf_1',p2:'W:sf_2'},
+  ]},
+];
+
+let wmData = {};
+let wmActiveTab = 'groups';
+let wmLoaded = false;
+
+// --- Slot-Auflösung ---
+function wmResolveSlot(slot) {
+  if (!slot) return '?';
+  // Gruppenposition z.B. "1A", "2B", "3C"
+  const gpM = slot.match(/^([123])([A-L])$/);
+  if (gpM) {
+    const pos = parseInt(gpM[1]) - 1;
+    const gk  = gpM[2];
+    const tbl = wmCalcTable(gk);
+    return tbl[pos] ? tbl[pos].team : slot;
+  }
+  // Drittplatzierte (noch nicht aufgelöst)
+  if (slot.startsWith('3.Gr')) return '3. Platz (TBD)';
+  // K.o.-Sieger "W:r32_1"
+  const wM = slot.match(/^W:(.+)$/);
+  if (wM) {
+    const mid = wM[1];
+    const res = wmData[mid];
+    if (!res || res.score1 === null || res.score1 === undefined || res.score2 === null || res.score2 === undefined) return '?';
+    const km = wmFindKoMatch(mid);
+    if (!km) return '?';
+    const s1 = parseInt(res.score1), s2 = parseInt(res.score2);
+    const t1 = wmResolveSlot(km.p1), t2 = wmResolveSlot(km.p2);
+    if (s1 > s2) return t1;
+    if (s2 > s1) return t2;
+    return t1; // draw → treat as t1 (penalties assumed)
+  }
+  // K.o.-Verlierer "L:sf_1"
+  const lM = slot.match(/^L:(.+)$/);
+  if (lM) {
+    const mid = lM[1];
+    const res = wmData[mid];
+    if (!res || res.score1 === null || res.score1 === undefined || res.score2 === null || res.score2 === undefined) return '?';
+    const km = wmFindKoMatch(mid);
+    if (!km) return '?';
+    const s1 = parseInt(res.score1), s2 = parseInt(res.score2);
+    const t1 = wmResolveSlot(km.p1), t2 = wmResolveSlot(km.p2);
+    if (s1 > s2) return t2;
+    if (s2 > s1) return t1;
+    return t2;
+  }
+  return slot;
+}
+
+function wmFindKoMatch(id) {
+  for (const r of WM_KO) for (const m of r.matches) if (m.id === id) return m;
+  return null;
+}
+
+function wmGetWinner(matchId) {
+  const res = wmData[matchId];
+  if (!res || res.score1 == null || res.score2 == null) return null;
+  const km = wmFindKoMatch(matchId);
+  if (!km) {
+    // Gruppenspiel
+    const gm = WM_SCHEDULE.find(m => m.id === matchId);
+    if (!gm) return null;
+    const s1 = parseInt(res.score1), s2 = parseInt(res.score2);
+    return s1 > s2 ? gm.t1 : (s2 > s1 ? gm.t2 : null);
+  }
+  return wmResolveSlot('W:' + matchId);
+}
+
+// --- Gruppentabelle berechnen ---
+function wmCalcTable(gk) {
+  const teams = WM_GROUPS[gk].teams;
+  const tbl = {};
+  teams.forEach(t => { tbl[t] = {team:t,sp:0,w:0,u:0,n:0,tore:0,gt:0,td:0,pts:0}; });
+  WM_SCHEDULE.filter(m => m.group === gk).forEach(m => {
+    const r = wmData[m.id];
+    if (!r || r.score1 == null || r.score2 == null) return;
+    const s1 = parseInt(r.score1), s2 = parseInt(r.score2);
+    tbl[m.t1].sp++; tbl[m.t1].tore += s1; tbl[m.t1].gt += s2;
+    tbl[m.t2].sp++; tbl[m.t2].tore += s2; tbl[m.t2].gt += s1;
+    if (s1 > s2) { tbl[m.t1].w++; tbl[m.t1].pts += 3; tbl[m.t2].n++; }
+    else if (s2 > s1) { tbl[m.t2].w++; tbl[m.t2].pts += 3; tbl[m.t1].n++; }
+    else { tbl[m.t1].u++; tbl[m.t1].pts++; tbl[m.t2].u++; tbl[m.t2].pts++; }
+  });
+  Object.values(tbl).forEach(t => { t.td = t.tore - t.gt; });
+  return Object.values(tbl).sort((a,b) => b.pts-a.pts || b.td-a.td || b.tore-a.tore);
+}
+
+// --- Daten laden / speichern ---
+async function wmLoadData() {
+  const d = await api('wm_load');
+  if (d && d.ok) { wmData = d.data || {}; wmLoaded = true; }
+}
+
+async function wmSaveResult(matchId, score1, score2, stake, pnl, note) {
+  const res = await api('wm_save', {
+    match_id: matchId,
+    score1: score1 !== '' ? score1 : null,
+    score2: score2 !== '' ? score2 : null,
+    stake:  stake  !== '' ? parseFloat(String(stake).replace(',','.'))  : null,
+    pnl:    pnl    !== '' ? parseFloat(String(pnl).replace(',','.'))    : null,
+    note:   note || '',
+  });
+  if (res?.ok) {
+    wmData[matchId] = {score1: score1!==''?parseInt(score1):null, score2: score2!==''?parseInt(score2):null,
+      stake: stake!==''?parseFloat(String(stake).replace(',','.')):null,
+      pnl:   pnl!==''?parseFloat(String(pnl).replace(',','.')):null, note: note||''};
+    toast('✓ Ergebnis gespeichert');
+    renderWMMetrics();
+    renderWMGroupsContainer();
+    if (wmActiveTab === 'bracket') renderWMBracket();
+    if (wmActiveTab === 'bets') renderWMBets();
+  } else { toast('Fehler beim Speichern'); }
+}
+
+// --- Sub-Tab wechseln ---
+function wmTab(name) {
+  wmActiveTab = name;
+  document.querySelectorAll('.wm-tab').forEach((b,i) => b.classList.toggle('on', ['groups','bracket','bets'][i]===name));
+  document.querySelectorAll('.wm-panel').forEach(p => p.classList.remove('on'));
+  document.getElementById('wm-panel-'+name).classList.add('on');
+  if (name==='bracket') renderWMBracket();
+  if (name==='bets')    renderWMBets();
+}
+
+// --- Haupt-Render ---
+async function renderWM() {
+  if (!wmLoaded) await wmLoadData();
+  renderWMMetrics();
+  renderWMGroupsContainer();
+  if (wmActiveTab==='bracket') renderWMBracket();
+  if (wmActiveTab==='bets')    renderWMBets();
+}
+
+// --- Metriken ---
+function renderWMMetrics() {
+  // Weltmeister ermitteln
+  const res = wmData['final_1'];
+  const champ = (res && res.score1 != null && res.score2 != null) ? wmResolveSlot('W:final_1') : null;
+  const champEl = document.getElementById('wm-m-champ');
+  if (champEl) champEl.textContent = champ && champ!=='?' ? '🏆 '+champ : '–';
+
+  // Spielstatistik
+  const played = WM_SCHEDULE.filter(m => wmData[m.id] && wmData[m.id].score1 != null).length;
+  const open   = WM_SCHEDULE.length - played;
+  const playedEl = document.getElementById('wm-m-played');
+  const openEl   = document.getElementById('wm-m-open');
+  if (playedEl) playedEl.textContent = played;
+  if (openEl)   openEl.textContent   = 'offen: ' + open;
+
+  // WM Wetten: alle Wetten mit league='WM 2026'
+  const wmBets = allBets.filter(b => (b.league||'').toUpperCase().includes('WM'));
+  const settled = wmBets.filter(b => b.status==='won'||b.status==='lost'||b.status==='cashout');
+  const wonB    = settled.filter(b => b.status==='won');
+  const pnl     = wmBets.reduce((s,b) => s + myPnLForBet(b), 0);
+  const wr      = settled.length ? wonB.length/settled.length*100 : 0;
+  const pnlEl   = document.getElementById('wm-m-pnl');
+  const wrEl    = document.getElementById('wm-m-wr');
+  const wrSEl   = document.getElementById('wm-m-wr-s');
+  if (pnlEl) { pnlEl.textContent = fmtPnL(pnl); pnlEl.className='mtr-val '+(pnl>=0?'cg':'cr'); }
+  if (wrEl)  { wrEl.textContent  = wr.toFixed(0)+'%'; wrEl.className='mtr-val cb'; }
+  if (wrSEl) wrSEl.textContent   = wonB.length+'/'+settled.length+' WM-Wetten';
+
+  // Auch WM-Wetten aus wm_data.json berücksichtigen (direkte Spielwetten)
+  const wmGameStake = Object.values(wmData).reduce((s,d) => s+(d.stake||0), 0);
+  const wmGamePnl   = Object.values(wmData).reduce((s,d) => s+(d.pnl||0), 0);
+  if (wmBets.length === 0 && wmGameStake > 0) {
+    if (pnlEl) { pnlEl.textContent = fmtPnL(wmGamePnl); pnlEl.className='mtr-val '+(wmGamePnl>=0?'cg':'cr'); }
+  }
+}
+
+// --- Gruppen ---
+function renderWMGroupsContainer() {
+  const cont = document.getElementById('wm-groups-container');
+  if (!cont) return;
+  const gKeys = Object.keys(WM_GROUPS);
+  let html = '<div class="wm-group-grid">';
+  gKeys.forEach(gk => { html += renderGroupCard(gk); });
+  html += '</div>';
+  cont.innerHTML = html;
+}
+
+function renderGroupCard(gk) {
+  const g    = WM_GROUPS[gk];
+  const tbl  = wmCalcTable(gk);
+  const games = WM_SCHEDULE.filter(m => m.group === gk);
+  const played = games.filter(m => wmData[m.id] && wmData[m.id].score1 != null).length;
+
+  // Tabelle
+  let tblHTML = `<table class="wm-tbl"><thead><tr>
+    <th style="text-align:left;">Team</th>
+    <th title="Spiele">Sp</th><th title="Siege">S</th><th title="Unentschieden">U</th><th title="Niederlagen">N</th>
+    <th title="Tore">T</th><th title="Tordifferenz">TD</th><th title="Punkte">Pts</th>
+  </tr></thead><tbody>`;
+  const posCls = ['wm-p1','wm-p2','wm-p3','wm-p4'];
+  tbl.forEach((r, i) => {
+    tblHTML += `<tr>
+      <td><span class="wm-pos ${posCls[i]}">${i+1}</span>${r.team}</td>
+      <td>${r.sp}</td><td>${r.w}</td><td>${r.u}</td><td>${r.n}</td>
+      <td>${r.tore}:${r.gt}</td><td class="${r.td>0?'cg':r.td<0?'cr':'cn'}">${r.td>0?'+':''}${r.td}</td>
+      <td class="wm-pts">${r.pts}</td>
+    </tr>`;
+  });
+  tblHTML += '</tbody></table>';
+
+  // Spiele
+  let mds = [1,2,3];
+  let gamesHTML = '<div class="wm-games">';
+  mds.forEach(md => {
+    const mdGames = games.filter(m => m.md === md);
+    gamesHTML += `<div class="wm-md-label">Spieltag ${md}</div>`;
+    mdGames.forEach(m => {
+      const res = wmData[m.id] || {};
+      const s1  = res.score1 != null ? res.score1 : '';
+      const s2  = res.score2 != null ? res.score2 : '';
+      const done = res.score1 != null && res.score2 != null;
+      const w1 = done && parseInt(res.score1) > parseInt(res.score2);
+      const w2 = done && parseInt(res.score2) > parseInt(res.score1);
+      gamesHTML += `<div class="wm-game" id="wg-${m.id}">
+        <div class="wm-game-date">${m.date.slice(5).replace('-','.')}</div>
+        <div class="wm-game-home" style="${w1?'color:var(--green)':w2?'color:var(--t3)':''}">${m.t1}</div>
+        <div class="wm-score-wrap">
+          <input class="wm-sinp" type="number" min="0" max="99" id="s1-${m.id}" value="${s1}" placeholder="–" oninput="wmScoreInput('${m.id}')">
+          <span class="wm-ssep">:</span>
+          <input class="wm-sinp" type="number" min="0" max="99" id="s2-${m.id}" value="${s2}" placeholder="–" oninput="wmScoreInput('${m.id}')">
+          <button class="wm-sbtn" onclick="wmSaveGame('${m.id}')">✓</button>
+          <button class="wm-bbtn" onclick="wmBetOnGame('${m.id}')">€</button>
+        </div>
+        <div class="wm-game-away" style="${w2?'color:var(--green)':w1?'color:var(--t3)':''}">${m.t2}</div>
+      </div>`;
+    });
+  });
+  gamesHTML += '</div>';
+
+  return `<div class="wm-group-card">
+    <div class="wm-group-header">
+      <span class="wm-group-name">${g.name}</span>
+      <span class="wm-group-md">${played}/6 gespielt</span>
+    </div>
+    <div>${tblHTML}</div>
+    ${gamesHTML}
+  </div>`;
+}
+
+function wmScoreInput(mid) {
+  // Live-Feedback: Highlight wenn beide Felder ausgefüllt
+  const s1 = document.getElementById('s1-'+mid);
+  const s2 = document.getElementById('s2-'+mid);
+  if (s1 && s2 && s1.value !== '' && s2.value !== '') {
+    s1.style.borderColor = '#16a34a'; s2.style.borderColor = '#16a34a';
+  } else {
+    if (s1) s1.style.borderColor = ''; if (s2) s2.style.borderColor = '';
+  }
+}
+
+function wmSaveGame(mid) {
+  const s1 = document.getElementById('s1-'+mid)?.value ?? '';
+  const s2 = document.getElementById('s2-'+mid)?.value ?? '';
+  wmSaveResult(mid, s1, s2, '', '', '');
+}
+
+function wmBetOnGame(mid) {
+  const gm = WM_SCHEDULE.find(m => m.id === mid) || wmFindKoMatch(mid);
+  if (!gm) return;
+  document.getElementById('f-desc').value   = (gm.t1 || '') + ' – ' + (gm.t2 || '') + ', ' + gm.id;
+  document.getElementById('f-league').value = 'WM 2026';
+  document.getElementById('f-sport').value  = 'Fußball';
+  go('add');
+  setTimeout(() => document.getElementById('f-stake').focus(), 150);
+}
+
+// --- Turnierbaum ---
+function renderWMBracket() {
+  const champBox = document.getElementById('wm-champion-box');
+  const bracketEl = document.getElementById('wm-bracket-container');
+  if (!bracketEl) return;
+
+  // Weltmeister?
+  const res = wmData['final_1'];
+  const champ = (res && res.score1 != null && res.score2 != null) ? wmResolveSlot('W:final_1') : null;
+  if (champ && champ !== '?') {
+    champBox.innerHTML = `<div class="wm-champion">
+      <div class="wm-champ-lbl">🏆 Weltmeister 2026</div>
+      <div class="wm-champ-name">${champ}</div>
+      <div class="wm-champ-sub">FIFA WM 2026 – USA / Mexiko / Kanada</div>
+    </div>`;
+  } else { champBox.innerHTML = ''; }
+
+  let html = '';
+  WM_KO.forEach(round => {
+    html += `<div class="wm-br-col">
+      <div class="wm-br-col-hdr">${round.label}<br><span style="font-size:9px;font-weight:400;">${round.date}</span></div>
+      <div class="wm-br-matches">`;
+    round.matches.forEach(m => {
+      const t1 = wmResolveSlot(m.p1);
+      const t2 = wmResolveSlot(m.p2);
+      const r  = wmData[m.id] || {};
+      const s1 = r.score1 != null ? r.score1 : '';
+      const s2 = r.score2 != null ? r.score2 : '';
+      const done = r.score1 != null && r.score2 != null;
+      const w1 = done && parseInt(r.score1) > parseInt(r.score2);
+      const w2 = done && parseInt(r.score2) > parseInt(r.score1);
+      const tbd1 = (t1==='?'||t1.includes('TBD'));
+      const tbd2 = (t2==='?'||t2.includes('TBD'));
+      const isFinal = round.id === 'final';
+      html += `<div class="wm-ko${isFinal?' wm-ko-final':''}" onclick="wmKoClick('${m.id}')">
+        <div class="wm-ko-t${w1?' win':''}${tbd1?' tbd':''}">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${t1}</span>
+          <span class="wm-ko-sc">${s1}</span>
+        </div>
+        <div class="wm-ko-t${w2?' win':''}${tbd2?' tbd':''}">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${t2}</span>
+          <span class="wm-ko-sc">${s2}</span>
+        </div>
+      </div>`;
+    });
+    html += '</div></div>';
+  });
+  bracketEl.innerHTML = html;
+}
+
+function wmKoClick(mid) {
+  const km = wmFindKoMatch(mid);
+  if (!km) return;
+  const t1 = wmResolveSlot(km.p1);
+  const t2 = wmResolveSlot(km.p2);
+  if (t1==='?' || t2==='?') { toast('Teams noch nicht ermittelt'); return; }
+  const r  = wmData[mid] || {};
+  const s1 = prompt(`${t1} – Tore:`, r.score1 != null ? r.score1 : '');
+  if (s1 === null) return;
+  const s2 = prompt(`${t2} – Tore:`, r.score2 != null ? r.score2 : '');
+  if (s2 === null) return;
+  wmSaveResult(mid, s1, s2, '', '', '');
+  renderWMBracket();
+}
+
+// --- WM-Wetten Statistik ---
+function renderWMBets() {
+  const cont = document.getElementById('wm-bets-container');
+  if (!cont) return;
+
+  // WM-Wetten aus daten.csv (league contains 'WM')
+  const wmBets  = allBets.filter(b => (b.league||'').toUpperCase().includes('WM'));
+  const settled = wmBets.filter(b => b.status==='won'||b.status==='lost'||b.status==='cashout');
+  const wonB    = settled.filter(b => b.status==='won');
+  const pnl     = wmBets.reduce((s,b) => s+myPnLForBet(b),0);
+  const stake   = wmBets.reduce((s,b) => s+(+b.stake),0);
+  const wr      = settled.length ? wonB.length/settled.length*100 : 0;
+  const roi     = stake>0 ? pnl/stake*100 : 0;
+
+  // WM-Spielwetten aus wm_data.json
+  const gWagers = Object.entries(wmData).filter(([,d]) => d.stake && d.stake > 0);
+  const gStake  = gWagers.reduce((s,[,d]) => s+(d.stake||0), 0);
+  const gPnl    = gWagers.reduce((s,[,d]) => s+(d.pnl||0), 0);
+
+  cont.innerHTML = `
+    <div class="sh">WM 2026 – Gesamt-Statistik</div>
+    <div class="mtr-grid" style="margin-bottom:18px;">
+      <div class="mtr"><div class="mtr-lbl">WM Gesamtgewinn</div><div class="mtr-val ${pnl>=0?'cg':'cr'}">${fmtPnL(pnl)}</div><div class="mtr-sub">nach Tax</div></div>
+      <div class="mtr"><div class="mtr-lbl">WM Einsatz</div><div class="mtr-val cn">${fmtAbs(stake)}</div><div class="mtr-sub">${wmBets.length} Wetten</div></div>
+      <div class="mtr"><div class="mtr-lbl">Trefferquote WM</div><div class="mtr-val cb">${wr.toFixed(0)}%</div><div class="mtr-sub">${wonB.length}/${settled.length} abg.</div></div>
+      <div class="mtr"><div class="mtr-lbl">ROI WM</div><div class="mtr-val ${roi>=0?'cg':'cr'}">${roi.toFixed(1)}%</div><div class="mtr-sub">auf Einsatz</div></div>
+    </div>
+    ${gStake>0?`<div class="sh">WM-Spielwetten (direkt erfasst)</div>
+    <div class="card card-pad" style="margin-bottom:18px;">
+      <div class="crow"><span class="clbl">Gesamt-Einsatz</span><span class="cval">${fmtAbs(gStake)}</span></div>
+      <div class="crow"><span class="clbl">Reingewinn</span><span class="cval ${gPnl>=0?'cg':'cr'}">${fmtPnL(gPnl)}</span></div>
+      <div class="crow" style="border-top:0.5px solid var(--sep);padding-top:8px;margin-top:4px;"><span class="clbl">Wetten mit Einsatz</span><span class="cval">${gWagers.length}</span></div>
+    </div>`:''}
+    <div class="sh">WM-Wetten (aus daten.csv)</div>
+    <div class="card">${wmBets.length
+      ? wmBets.map(b=>betHTML(b,true)).join('')
+      : '<div class="empty"><div class="empty-ico">💰</div>Noch keine WM-Wetten.<br><small style="color:var(--t3)">Beim Hinzufügen "WM 2026" als Liga eintragen oder den € Button bei einem Spiel nutzen.</small></div>'
+    }</div>`;
+}
 
 // ============================================================
 //  INIT
