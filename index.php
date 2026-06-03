@@ -969,6 +969,8 @@ select.inp option{background:var(--surface);}
 .btn-login{width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer;letter-spacing:-0.2px;transition:opacity 0.15s,transform 0.1s;margin-top:4px;}
 .btn-login:hover{opacity:0.9;}
 .btn-login:active{transform:scale(0.985);}
+.login-public{display:block;text-align:center;margin-top:18px;padding:11px 14px;background:var(--surface2);border:0.5px solid var(--sep);border-radius:var(--r-md);color:var(--t2);font-size:13px;font-weight:500;text-decoration:none;transition:all 0.15s;}
+.login-public:hover{color:var(--blue);border-color:var(--blue);background:var(--blue-s);}
 .login-footer{font-size:12px;color:var(--t3);text-align:center;margin-top:22px;}
 
 /* APP */
@@ -1495,6 +1497,7 @@ select.inp option{background:var(--surface);}
       <input type="password" name="password" id="pw" class="inp" placeholder="••••••••••••" autocomplete="current-password" required>
       <button type="submit" class="btn-login">Einloggen →</button>
     </form>
+    <a href="public.php" class="login-public">🌐 Öffentliche Wett-Übersicht ansehen</a>
     <div class="login-footer">Nur für autorisierte Nutzer · <?= date('Y') ?></div>
   </div>
 </div>
@@ -1544,7 +1547,7 @@ select.inp option{background:var(--surface);}
 
   <!-- TABS -->
   <div class="tabs">
-    <button class="tab on"  onclick="go('kalender')">📅 Kalender</button>
+    <button class="tab on"  onclick="go('kalender')">Kalender</button>
     <button class="tab"     onclick="go('dash')">Dashboard</button>
     <button class="tab"     onclick="go('spiele')">Spiele</button>
     <button class="tab"     onclick="go('add')">+ Wette</button>
@@ -1552,8 +1555,8 @@ select.inp option{background:var(--surface);}
     <button class="tab"     onclick="go('hist')">Verlauf</button>
     <button class="tab"     onclick="go('stats')">Statistiken</button>
     <button class="tab"     onclick="go('tools')">Tools</button>
-    <button class="tab"     onclick="go('wm')">🏆 WM 2026</button>
-    <button class="tab"     onclick="go('casino')">🎰 Casino</button>
+    <button class="tab"     onclick="go('wm')">WM 2026</button>
+    <button class="tab"     onclick="go('casino')">Casino</button>
   </div>
 
   <!-- ====================================================
