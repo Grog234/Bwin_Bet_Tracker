@@ -45,7 +45,7 @@ if ($apiAction !== '') {
             if (ob_get_length() !== false) ob_clean();
             http_response_code(401); echo json_encode(['e'=>'auth']); exit;
         }
-        if (in_array($apiAction, ['add','del','upd','upd_status','change_pw','create_acct','invite_accept','invite_decline','wm_save'], true)) {
+        if (in_array($apiAction, ['add','del','upd','upd_status','change_pw','create_acct','invite_accept','invite_decline','wm_save','casino_add','casino_del'], true)) {
             $body = json_decode(file_get_contents('php://input'), true) ?? [];
             if (!verifyCsrf($body['_csrf'] ?? '')) {
                 if (ob_get_length() !== false) ob_clean();
@@ -584,6 +584,54 @@ function wmDataWrite(array $data): void {
     @rename($tmp, WM_DATA_FILE);
 }
 
+// ============================================================
+//  CASINO STORE — casino.csv
+//  Schema: id, date, game, provider, buyin, cashout, note, user
+//  P&L pro Session = cashout - buyin (wird clientseitig berechnet)
+// ============================================================
+function casinoRead(): array {
+    if (!file_exists(CASINO_FILE)) {
+        $fp = @fopen(CASINO_FILE, 'w');
+        if ($fp) {
+            flock($fp, LOCK_EX);
+            fputcsv($fp, CASINO_HEADER, ',', '"');
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        }
+        return [];
+    }
+    $fp = @fopen(CASINO_FILE, 'r');
+    if (!$fp) return [];
+    flock($fp, LOCK_SH);
+    fgetcsv($fp, 0, ',', '"'); // skip header
+    $rows = [];
+    $cols = count(CASINO_HEADER);
+    while (($row = fgetcsv($fp, 0, ',', '"')) !== false) {
+        if ($row === null) continue;
+        if (count($row) === 1 && ($row[0] === null || $row[0] === '')) continue;
+        if (count($row) < 6) continue;
+        $padded = array_pad($row, $cols, '');
+        $rows[] = array_combine(CASINO_HEADER, array_slice($padded, 0, $cols));
+    }
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    return array_reverse($rows);
+}
+
+function casinoWrite(array $rows): void {
+    $rows = array_reverse($rows);
+    $tmp  = CASINO_FILE . '.tmp';
+    $fp   = fopen($tmp, 'w');
+    if (!$fp) return;
+    flock($fp, LOCK_EX);
+    fputcsv($fp, CASINO_HEADER, ',', '"');
+    foreach ($rows as $r) fputcsv($fp, array_values($r), ',', '"');
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    @rename($tmp, CASINO_FILE);
+}
+
 function s(string $v): string { return htmlspecialchars(trim($v), ENT_QUOTES, 'UTF-8'); }
 function f(mixed $v, int $dec = 2, float $min = 0.0, float $max = 1e9): float {
     $n = is_numeric($v) ? (float)$v : 0.0;
@@ -819,6 +867,33 @@ function handleApi(string $a): void {
     if ($a === 'users') {
         // Nur Anzeigedaten — niemals Hashes herausgeben
         echo json_encode(['users' => userList()]); return;
+    }
+    if ($a === 'casino_list') {
+        echo json_encode(['ok' => true, 'sessions' => casinoRead(), 'user' => currentUser()]); return;
+    }
+    if ($a === 'casino_add') {
+        $rows = array_reverse(casinoRead());
+        $id   = (string)(time() . random_int(100, 999));
+        $rows[] = [
+            'id'       => $id,
+            'date'     => $b['date'] ?? date('Y-m-d'),
+            'game'     => s($b['game']     ?? ''),
+            'provider' => s($b['provider'] ?? ''),
+            'buyin'    => f($b['buyin']    ?? 0),
+            'cashout'  => f($b['cashout']  ?? 0),
+            'note'     => s($b['note']     ?? ''),
+            'user'     => currentUser(),
+        ];
+        casinoWrite($rows);
+        echo json_encode(['ok' => true, 'id' => $id]); return;
+    }
+    if ($a === 'casino_del') {
+        $id = (string)($b['id'] ?? '');
+        $me = currentUser();
+        $rows = casinoRead();
+        $rows = array_values(array_filter($rows, fn($r) => !($r['id'] === $id && $r['user'] === $me)));
+        casinoWrite($rows);
+        echo json_encode(['ok' => true]); return;
     }
     if ($a === 'export') {
         header('Content-Type: text/csv; charset=utf-8');
@@ -1435,6 +1510,9 @@ select.inp option{background:var(--surface);}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       <span class="invite-count" id="invite-count" hidden>0</span>
     </button>
+    <a class="ib" href="public.php" target="_blank" rel="noopener" title="Öffentliche Ansicht">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    </a>
     <button class="ib" id="theme-btn" onclick="toggleTheme()" title="Dark/Light Mode">
       <span id="theme-ico">☀️</span>
     </button>
@@ -1475,6 +1553,7 @@ select.inp option{background:var(--surface);}
     <button class="tab"     onclick="go('stats')">Statistiken</button>
     <button class="tab"     onclick="go('tools')">Tools</button>
     <button class="tab"     onclick="go('wm')">🏆 WM 2026</button>
+    <button class="tab"     onclick="go('casino')">🎰 Casino</button>
   </div>
 
   <!-- ====================================================
@@ -1841,6 +1920,63 @@ select.inp option{background:var(--surface);}
 
   </div>
 
+  <!-- ====================================================
+       TAB: CASINO
+  ==================================================== -->
+  <div class="sec" id="sec-casino">
+
+    <div class="wm-banner">
+      <div class="wm-banner-icon">🎰</div>
+      <div>
+        <div class="wm-title">Casino</div>
+        <div class="wm-sub">Slots · Roulette · Blackjack · Poker — Sessions tracken</div>
+      </div>
+    </div>
+
+    <!-- Casino Metrics -->
+    <div class="mtr-grid" id="casino-mtr">
+      <div class="mtr"><div class="mtr-lbl">Casino P&amp;L</div><div class="mtr-val cn" id="ca-m-pnl">–</div><div class="mtr-sub">alle Sessions</div></div>
+      <div class="mtr"><div class="mtr-lbl">Sessions</div><div class="mtr-val cn" id="ca-m-cnt">–</div><div class="mtr-sub" id="ca-m-wr">Gewinnquote: –</div></div>
+      <div class="mtr"><div class="mtr-lbl">Einsatz Total</div><div class="mtr-val cn" id="ca-m-buyin">–</div><div class="mtr-sub">gesamter Buy-In</div></div>
+      <div class="mtr"><div class="mtr-lbl">Beste Session</div><div class="mtr-val cn" id="ca-m-best">–</div><div class="mtr-sub" id="ca-m-best-s">–</div></div>
+    </div>
+
+    <!-- Add Session -->
+    <div class="sh">Neue Session</div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="fc">
+        <div class="fg fg2">
+          <div class="fl"><label>Datum</label><input class="fi" type="date" id="ca-date"></div>
+          <div class="fl"><label>Spiel</label>
+            <select class="fi" id="ca-game">
+              <option>Slots</option><option>Roulette</option><option>Blackjack</option>
+              <option>Poker</option><option>Baccarat</option><option>Crash / Aviator</option>
+              <option>Sonstiges</option>
+            </select>
+          </div>
+        </div>
+        <div class="fg">
+          <div class="fl"><label>Anbieter / Casino</label><input class="fi" type="text" id="ca-provider" placeholder="z.B. Bwin, Stake, Pokerstars"></div>
+        </div>
+        <div class="fg fg2">
+          <div class="fl"><label>Buy-In (€)</label><input class="fi" type="number" step="0.01" min="0" id="ca-buyin" placeholder="0.00" oninput="caLiveCalc()"></div>
+          <div class="fl"><label>Auszahlung (€)</label><input class="fi" type="number" step="0.01" min="0" id="ca-cashout" placeholder="0.00" oninput="caLiveCalc()"></div>
+        </div>
+        <div class="fg">
+          <div class="fl"><label>Notiz (optional)</label><input class="fi" type="text" id="ca-note" placeholder="z.B. Bonus, Freispiele…"></div>
+        </div>
+        <div id="ca-calc" style="font-size:13px;font-weight:600;margin:4px 0 10px;color:var(--t2);">Ergebnis: –</div>
+        <button class="btn btn-p btn-full" onclick="casinoAdd()">Session speichern</button>
+      </div>
+    </div>
+
+    <!-- Session List -->
+    <div class="sh">Sessions</div>
+    <div class="card" id="casino-list">
+      <div class="empty"><div class="empty-ico">🎰</div>Lade Sessions…</div>
+    </div>
+  </div>
+
 </div>
 
 <!-- INVITES MODAL ================================================= -->
@@ -1977,7 +2113,7 @@ function setUser(u) {
 // ============================================================
 //  TABS
 // ============================================================
-const TAB_IDS = ['kalender','dash','spiele','add','kombi','hist','stats','tools','wm'];
+const TAB_IDS = ['kalender','dash','spiele','add','kombi','hist','stats','tools','wm','casino'];
 
 function go(id) {
   document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',TAB_IDS[i]===id));
@@ -1991,6 +2127,7 @@ function go(id) {
   if (id==='tools')    renderTools();
   if (id==='kombi')    initKombi();
   if (id==='wm')       renderWM();
+  if (id==='casino')   renderCasino();
 }
 
 // ============================================================
@@ -3058,6 +3195,7 @@ function renderAll() {
     if(id==='stats')    renderStats();
     if(id==='tools')    renderTools();
     if(id==='wm')       renderWMMetrics();
+    if(id==='casino')   renderCasinoMetrics();
   } else { renderKalender(); }
 }
 
@@ -3444,6 +3582,115 @@ function wmTab(name) {
   document.getElementById('wm-panel-'+name).classList.add('on');
   if (name==='bracket') renderWMBracket();
   if (name==='bets')    renderWMBets();
+}
+
+// ============================================================
+//  CASINO — Session-Tracking (casino.csv)
+// ============================================================
+let casinoSessions = [];
+let casinoLoaded   = false;
+
+function caPnl(s) { return (+s.cashout || 0) - (+s.buyin || 0); }
+
+async function casinoLoadData() {
+  const d = await api('casino_list');
+  casinoSessions = (d && d.sessions) || [];
+  casinoLoaded = true;
+}
+
+function caLiveCalc() {
+  const bi = +document.getElementById('ca-buyin').value || 0;
+  const co = +document.getElementById('ca-cashout').value || 0;
+  const pnl = co - bi;
+  const el = document.getElementById('ca-calc');
+  el.textContent = 'Ergebnis: ' + fmtPnL(pnl);
+  el.style.color = pnl > 0 ? 'var(--green)' : (pnl < 0 ? 'var(--red)' : 'var(--t2)');
+}
+
+async function renderCasino() {
+  if (!casinoLoaded) await casinoLoadData();
+  if (!document.getElementById('ca-date').value) {
+    document.getElementById('ca-date').value = new Date().toISOString().slice(0,10);
+  }
+  caLiveCalc();
+  renderCasinoMetrics();
+  renderCasinoList();
+}
+
+function renderCasinoMetrics() {
+  const setv = (id,v,cls)=>{ const e=document.getElementById(id); if(!e) return; e.textContent=v; if(cls!==undefined) e.className='mtr-val '+cls; };
+  const sub  = (id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  const n = casinoSessions.length;
+  const totalPnl = casinoSessions.reduce((a,s)=>a+caPnl(s),0);
+  const totalBuyin = casinoSessions.reduce((a,s)=>a+(+s.buyin||0),0);
+  const wins = casinoSessions.filter(s=>caPnl(s)>0).length;
+  let best = null;
+  casinoSessions.forEach(s=>{ if(best===null || caPnl(s)>caPnl(best)) best=s; });
+
+  setv('ca-m-pnl', fmtPnL(totalPnl), totalPnl>0?'cg':totalPnl<0?'cr':'cn');
+  setv('ca-m-cnt', String(n), 'cn');
+  sub('ca-m-wr', 'Gewinnquote: ' + (n ? Math.round(wins/n*100) : 0) + '%');
+  setv('ca-m-buyin', fmtAbs(totalBuyin), 'cn');
+  setv('ca-m-best', best ? fmtPnL(caPnl(best)) : '–', best && caPnl(best)>0?'cg':best && caPnl(best)<0?'cr':'cn');
+  sub('ca-m-best-s', best ? (best.game + (best.provider? ' · '+best.provider:'')) : '–');
+}
+
+function renderCasinoList() {
+  const box = document.getElementById('casino-list');
+  if (!casinoSessions.length) {
+    box.innerHTML = '<div class="empty"><div class="empty-ico">🎰</div>Noch keine Casino-Sessions</div>';
+    return;
+  }
+  box.innerHTML = casinoSessions.map(s=>{
+    const pnl = caPnl(s);
+    const cls = pnl>0?'cg':(pnl<0?'cr':'cn');
+    const ico = pnl>=0?'🟢':'🔴';
+    return `<div class="li">
+      <div class="li-ico" style="background:var(--surface2);">${ico}</div>
+      <div class="li-body">
+        <div class="li-title">${s.game}${s.provider? ' · '+s.provider:''}</div>
+        <div class="li-sub">${s.date} · Buy-In ${fmtAbs(+s.buyin)} → Auszahlung ${fmtAbs(+s.cashout)}${s.note? ' · '+s.note:''}</div>
+      </div>
+      <div class="li-right">
+        <div class="li-val ${cls}">${fmtPnL(pnl)}</div>
+        <button class="delbtn" onclick="casinoDel('${s.id}')">×</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function casinoAdd() {
+  const buyin   = +document.getElementById('ca-buyin').value || 0;
+  const cashout = +document.getElementById('ca-cashout').value || 0;
+  const payload = {
+    date:     document.getElementById('ca-date').value || new Date().toISOString().slice(0,10),
+    game:     document.getElementById('ca-game').value,
+    provider: document.getElementById('ca-provider').value.trim(),
+    buyin, cashout,
+    note:     document.getElementById('ca-note').value.trim(),
+  };
+  const r = await api('casino_add', payload);
+  if (r && r.ok) {
+    toast('Session gespeichert');
+    document.getElementById('ca-buyin').value = '';
+    document.getElementById('ca-cashout').value = '';
+    document.getElementById('ca-provider').value = '';
+    document.getElementById('ca-note').value = '';
+    caLiveCalc();
+    await casinoLoadData();
+    renderCasinoMetrics();
+    renderCasinoList();
+  }
+}
+
+async function casinoDel(id) {
+  if (!confirm('Diese Session löschen?')) return;
+  const r = await api('casino_del', { id });
+  if (r && r.ok) {
+    await casinoLoadData();
+    renderCasinoMetrics();
+    renderCasinoList();
+  }
 }
 
 // --- Haupt-Render ---
