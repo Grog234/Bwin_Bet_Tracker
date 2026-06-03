@@ -1,0 +1,36 @@
+# ============================================================
+#  Private / Laufzeitdaten — niemals ins Repo
+# ============================================================
+
+# Nutzer-Wettdaten (CSV-Stores)
+daten.csv
+casino.csv
+bet_invites.csv
+shares.csv
+kombi_legs.csv
+
+# App-State / JSON-Stores
+teams.json
+wm_data.json
+lockouts.json
+fixtures_cache.json
+
+# Zugangsdaten & Secrets
+users.json
+
+# Logs
+*.log
+access.log
+
+# Atomare Temp-Writes
+*.tmp
+
+# Backups (enthalten alte Configs/Secrets)
+.backup/
+
+# Editor / OS / Tool-Müll
+__MACOSX/
+.claude/
+_test_bash.txt
+.DS_Store
+Thumbs.db
