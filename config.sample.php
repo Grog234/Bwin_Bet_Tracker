@@ -58,7 +58,7 @@ define('UN_MAX_LEN', 32);
 define('SHARES_HEADER', ['bet_id', 'user', 'stake']);
 define('INVITES_HEADER', ['id', 'bet_id', 'from_user', 'to_user', 'stake', 'status', 'created_at']);
 define('KOMBI_LEGS_HEADER', ['bet_id', 'leg_idx', 'team', 'desc', 'odds']);
-define('CASINO_HEADER', ['id', 'date', 'game', 'provider', 'buyin', 'cashout', 'note', 'user']);
+define('CASINO_HEADER', ['id', 'date', 'game', 'provider', 'buyin', 'cashout', 'note', 'user', 'bonus']);
 
 // ---------- CSV SPALTEN ----------
 define('CSV_HEADER', [

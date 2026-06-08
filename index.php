@@ -608,10 +608,15 @@ function casinoRead(): array {
     $cols = count(CASINO_HEADER);
     while (($row = fgetcsv($fp, 0, ',', '"')) !== false) {
         if ($row === null) continue;
+        if (!is_array($row)) continue;
         if (count($row) === 1 && ($row[0] === null || $row[0] === '')) continue;
         if (count($row) < 6) continue;
-        $padded = array_pad($row, $cols, '');
-        $rows[] = array_combine(CASINO_HEADER, array_slice($padded, 0, $cols));
+        // Auf exakt $cols Spalten normalisieren: zu kurz -> auffüllen, zu lang -> abschneiden.
+        // (Schützt array_combine vor ValueError bei Alt-/Defektzeilen.)
+        $padded = array_slice(array_pad($row, $cols, ''), 0, $cols);
+        $combined = @array_combine(CASINO_HEADER, $padded);
+        if ($combined === false) continue;
+        $rows[] = $combined;
     }
     flock($fp, LOCK_UN);
     fclose($fp);
@@ -876,13 +881,14 @@ function handleApi(string $a): void {
         $id   = (string)(time() . random_int(100, 999));
         $rows[] = [
             'id'       => $id,
-            'date'     => $b['date'] ?? date('Y-m-d'),
-            'game'     => s($b['game']     ?? ''),
-            'provider' => s($b['provider'] ?? ''),
+            'date'     => s((string)($b['date'] ?? date('Y-m-d'))),
+            'game'     => s((string)($b['game']     ?? '')),
+            'provider' => s((string)($b['provider'] ?? '')),
             'buyin'    => f($b['buyin']    ?? 0),
             'cashout'  => f($b['cashout']  ?? 0),
-            'note'     => s($b['note']     ?? ''),
-            'user'     => currentUser(),
+            'note'     => s((string)($b['note'] ?? '')),
+            'user'     => (string)(currentUser() ?? ''),
+            'bonus'    => f($b['bonus']    ?? 0),
         ];
         casinoWrite($rows);
         echo json_encode(['ok' => true, 'id' => $id]); return;
@@ -1971,6 +1977,13 @@ select.inp option{background:var(--surface);}
         <div class="fg fg2">
           <div class="fl"><label>Buy-In (€)</label><input class="fi" type="number" step="0.01" min="0" id="ca-buyin" placeholder="0.00" oninput="caLiveCalc()"></div>
           <div class="fl"><label>Auszahlung (€)</label><input class="fi" type="number" step="0.01" min="0" id="ca-cashout" placeholder="0.00" oninput="caLiveCalc()"></div>
+        </div>
+        <div class="fg">
+          <div class="fl">
+            <label>Davon Bonus / Geschenk (€)</label>
+            <input class="fi" type="number" step="0.01" min="0" id="ca-bonus" placeholder="0.00" oninput="caLiveCalc()">
+            <div class="t3-hint" style="margin-top:4px;">Geschenktes Guthaben (z.B. Geburtstags-Bonus). Dieser Anteil zählt nicht als eigener Einsatz – bei Verlust entsteht dafür kein Minus.</div>
+          </div>
         </div>
         <div class="fg">
           <div class="fl"><label>Notiz (optional)</label><input class="fi" type="text" id="ca-note" placeholder="z.B. Bonus, Freispiele…"></div>
@@ -3720,7 +3733,16 @@ function wmTab(name) {
 let casinoSessions = [];
 let casinoLoaded   = false;
 
-function caPnl(s) { return (+s.cashout || 0) - (+s.buyin || 0); }
+// P&L: Bonus/Geschenk-Anteil des Buy-Ins zählt nicht als eigenes Geld.
+// Eigener Einsatz = buyin - bonus. Ergebnis = cashout - eigener Einsatz.
+// Bsp.: 20 € geschenkt (buyin=20, bonus=20), 40 € Auszahlung -> +40.
+//       Verloren (cashout=0) -> 0 (kein eigenes Geld verloren).
+function caPnl(s) {
+  const buyin = +s.buyin || 0;
+  const bonus = Math.min(+s.bonus || 0, buyin); // Bonus nie größer als Buy-In
+  const own   = buyin - bonus;
+  return (+s.cashout || 0) - own;
+}
 
 async function casinoLoadData() {
   const d = await api('casino_list');
@@ -3731,9 +3753,12 @@ async function casinoLoadData() {
 function caLiveCalc() {
   const bi = +document.getElementById('ca-buyin').value || 0;
   const co = +document.getElementById('ca-cashout').value || 0;
-  const pnl = co - bi;
+  const boEl = document.getElementById('ca-bonus');
+  const bo = boEl ? (+boEl.value || 0) : 0;
+  const pnl = caPnl({ buyin: bi, cashout: co, bonus: bo });
   const el = document.getElementById('ca-calc');
-  el.textContent = 'Ergebnis: ' + fmtPnL(pnl);
+  const bonusHint = bo > 0 ? ' (inkl. ' + fmtAbs(Math.min(bo, bi)) + ' Bonus/Geschenk)' : '';
+  el.textContent = 'Ergebnis: ' + fmtPnL(pnl) + bonusHint;
   el.style.color = pnl > 0 ? 'var(--green)' : (pnl < 0 ? 'var(--red)' : 'var(--t2)');
 }
 
@@ -3779,7 +3804,7 @@ function renderCasinoList() {
       <div class="li-ico" style="background:var(--surface2);">${ico}</div>
       <div class="li-body">
         <div class="li-title">${s.game}${s.provider? ' · '+s.provider:''}</div>
-        <div class="li-sub">${s.date} · Buy-In ${fmtAbs(+s.buyin)} → Auszahlung ${fmtAbs(+s.cashout)}${s.note? ' · '+s.note:''}</div>
+        <div class="li-sub">${s.date} · Buy-In ${fmtAbs(+s.buyin)} → Auszahlung ${fmtAbs(+s.cashout)}${(+s.bonus>0)? ' · 🎁 '+fmtAbs(Math.min(+s.bonus,+s.buyin))+' Bonus':''}${s.note? ' · '+s.note:''}</div>
       </div>
       <div class="li-right">
         <div class="li-val ${cls}">${fmtPnL(pnl)}</div>
@@ -3792,11 +3817,12 @@ function renderCasinoList() {
 async function casinoAdd() {
   const buyin   = +document.getElementById('ca-buyin').value || 0;
   const cashout = +document.getElementById('ca-cashout').value || 0;
+  const bonus   = +document.getElementById('ca-bonus').value || 0;
   const payload = {
     date:     document.getElementById('ca-date').value || new Date().toISOString().slice(0,10),
     game:     document.getElementById('ca-game').value,
     provider: document.getElementById('ca-provider').value.trim(),
-    buyin, cashout,
+    buyin, cashout, bonus,
     note:     document.getElementById('ca-note').value.trim(),
   };
   const r = await api('casino_add', payload);
@@ -3804,6 +3830,7 @@ async function casinoAdd() {
     toast('Session gespeichert');
     document.getElementById('ca-buyin').value = '';
     document.getElementById('ca-cashout').value = '';
+    document.getElementById('ca-bonus').value = '';
     document.getElementById('ca-provider').value = '';
     document.getElementById('ca-note').value = '';
     caLiveCalc();
