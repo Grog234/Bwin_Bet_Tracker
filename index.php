@@ -2238,6 +2238,8 @@ async function loadBets() {
   allBets    = d.bets    || [];
   allShares  = d.shares  || [];
   allInvites = d.invites || [];
+  // Casino-Sessions mitladen, damit sie in Kalender & Dashboard erscheinen.
+  await casinoLoadData();
   refreshInviteBadge();
   renderAll();
 }
@@ -2347,7 +2349,50 @@ function myStakeForBet(b) {
 }
 
 function myPnLForBet(b) {
+  if (b._casino) return +(+b._pnl || 0).toFixed(2);
   return +(calcPnL(b) * getMyShareFraction(b)).toFixed(2);
+}
+
+// ============================================================
+//  CASINO als Aktivität — Casino-Sessions als bet-ähnliche Objekte,
+//  damit sie im Kalender, Dashboard & Verlauf miterscheinen.
+//  P&L kommt aus caPnl() (Bonus/Geschenk-Logik). Eigener Einsatz =
+//  Buy-In abzüglich geschenktem Anteil.
+// ============================================================
+function casinoAsBets() {
+  if (!Array.isArray(casinoSessions) || !casinoSessions.length) return [];
+  return casinoSessions
+    .filter(s => s.user === activeUser)
+    .map(s => {
+      const pnl   = caPnl(s);
+      const buyin = +s.buyin || 0;
+      const bonus = Math.min(+s.bonus || 0, buyin);
+      const own   = buyin - bonus;
+      return {
+        id:       'casino_' + s.id,
+        _cid:     s.id,
+        date:     s.date,
+        sport:    'Casino',
+        desc:     (s.game || 'Casino-Session') + (s.provider ? ' · ' + s.provider : ''),
+        league:   s.provider || '',
+        market:   '',
+        bookie:   s.provider || 'Casino',
+        stake:    own,
+        odds:     0,
+        tax_rate: 0,
+        cashout:  +s.cashout || 0,
+        bonus:    bonus,
+        status:   pnl > 0 ? 'won' : (pnl < 0 ? 'lost' : 'void'),
+        user:     s.user,
+        _casino:  true,
+        _pnl:     +pnl.toFixed(2),
+      };
+    });
+}
+
+// Wetten + Casino kombiniert (für Kalender & Dashboard).
+function myActivity() {
+  return myBets().concat(casinoAsBets());
 }
 
 function isSharedBet(b) {
@@ -2402,12 +2447,20 @@ function updateMetrics() {
   const won        = settled.filter(b=>b.status==='won');
   // Einsatz/Tax: bei Shared Bets nur mein Anteil zaehlt.
   const myStake    = (b) => myStakeForBet(b);
-  const allStake   = myArr.filter(b=>b.status!=='void').reduce((s,b)=>s+myStake(b),0);
+  // Casino-Sessions fließen in P&L, Einsatz und Trefferquote ein (nicht in Ø-Quote).
+  const cas        = casinoAsBets();
+  const casSettled = cas.filter(c=>c.status==='won'||c.status==='lost');
+  const casWon     = cas.filter(c=>c.status==='won');
+  const casPnl     = cas.reduce((s,c)=>s+myPnLForBet(c),0);
+  const casStake   = cas.reduce((s,c)=>s+(+c.stake||0),0);
+  const allStake   = myArr.filter(b=>b.status!=='void').reduce((s,b)=>s+myStake(b),0) + casStake;
   const openStake  = myArr.filter(b=>b.status==='open').reduce((s,b)=>s+myStake(b),0);
-  const settledStk = settled.reduce((s,b)=>s+myStake(b),0);
-  const pnl        = myArr.reduce((s,b)=>s+myPnLForBet(b),0);
+  const settledStk = settled.reduce((s,b)=>s+myStake(b),0) + casStake;
+  const settledCnt = settled.length + casSettled.length;
+  const wonCnt     = won.length + casWon.length;
+  const pnl        = myArr.reduce((s,b)=>s+myPnLForBet(b),0) + casPnl;
   const roi        = settledStk>0 ? pnl/settledStk*100 : 0;
-  const winRate    = settled.length ? won.length/settled.length*100 : 0;
+  const winRate    = settledCnt ? wonCnt/settledCnt*100 : 0;
   const avgOdds    = won.length ? won.reduce((s,b)=>s+(+b.odds),0)/won.length : 0;
   // Tax anteilig nach myShareFraction
   const set=(id,v,cls)=>{const e=document.getElementById(id);e.textContent=v;e.className='mtr-val '+cls;};
@@ -2417,14 +2470,15 @@ function updateMetrics() {
   set('m-odds',  avgOdds.toFixed(2)+'x','cn');
   set('m-stake', fmtAbs(allStake),     'cn');
   document.getElementById('m-stake-s').textContent='offen: '+fmtAbs(openStake);
-  document.getElementById('m-win-s').textContent=won.length+'/'+settled.length+' abg.';
-  document.getElementById('m-roi-s').textContent='aus '+settled.length+' Wetten';
+  document.getElementById('m-win-s').textContent=wonCnt+'/'+settledCnt+' abg.';
+  document.getElementById('m-roi-s').textContent='aus '+settledCnt+' Einträgen';
 }
 
 // ============================================================
 //  BET ITEM HTML
 // ============================================================
 function betHTML(b, del=true, edit=false) {
+  if (b._casino) return casinoBetHTML(b);
   // 'pnl' fuer die Anzeige ist immer 'mein Anteil' — Standard-Wetten haben
   // Anteil = 100% wenn ich Owner bin, sonst 0%.
   const pnl     = myPnLForBet(b);
@@ -2465,6 +2519,23 @@ function betHTML(b, del=true, edit=false) {
   </div>`;
 }
 
+// Casino-Session als Listen-Eintrag (eigener Style, keine Settle-Buttons).
+function casinoBetHTML(b) {
+  const pnl  = myPnLForBet(b);
+  const pcls = pnl>0?'cg':pnl<0?'cr':'cn';
+  const bonusTxt = (+b.bonus>0) ? ' · 🎁 '+fmtAbs(+b.bonus)+' Bonus' : '';
+  return `<div class="li">
+    <div class="li-ico" style="background:rgba(217,119,6,0.12);">🎰</div>
+    <div class="li-body">
+      <div class="li-title">${b.desc}<span class="bdg bdg-co" style="margin-left:6px;">Casino</span></div>
+      <div class="li-sub">${b.date} · Buy-In ${fmtAbs(+b.stake + (+b.bonus||0))} → Auszahlung ${fmtAbs(+b.cashout)}${bonusTxt} · ${b.user}</div>
+    </div>
+    <div class="li-right">
+      <div class="li-val ${pcls}">${fmtPnL(pnl)}</div>
+    </div>
+  </div>`;
+}
+
 // ============================================================
 //  PIKKIT KALENDER
 // ============================================================
@@ -2480,9 +2551,9 @@ function calNext()  { calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderK
 function calToday() { calYear=now.getFullYear(); calMonth=now.getMonth(); calSelectedDay=null; renderKalender(); }
 
 function renderKalender() {
-  // Build day→bets map for this month
+  // Build day→bets map for this month (Wetten + Casino-Sessions)
   const dayMap = {};
-  myBets().forEach(b => {
+  myActivity().forEach(b => {
     const d = new Date(b.date+'T00:00:00');
     if (d.getFullYear()===calYear && d.getMonth()===calMonth) {
       const k = d.getDate();
@@ -2631,7 +2702,7 @@ function betSortCmp(a, b) {
 
 function renderDash() {
   updateMetrics();
-  const _mine = myBets();
+  const _mine = myActivity();
   const sorted=[..._mine].filter(b=>b.status!=='open'&&b.status!=='void').sort((a,b)=>a.date.localeCompare(b.date));
   let run=0; const lbls=[],dat=[];
   sorted.forEach(b=>{run+=myPnLForBet(b);lbls.push(b.date.slice(5));dat.push(+run.toFixed(2));});
@@ -3011,6 +3082,9 @@ function renderHist() {
   const fu  = document.getElementById('flt-user').value;
   const srt = document.getElementById('flt-sort').value;
   let arr=allBets.filter(b=>userInvolvedInBet(b,activeUser)&&(!fs||b.sport===fs)&&(!fst||b.status===fst)&&(!fb||b.bookie===fb)&&(!fu||b.user===fu));
+  // Casino-Sessions als Aktivität mit aufnehmen (gleiche Filter).
+  const casArr=casinoAsBets().filter(c=>(!fs||c.sport===fs)&&(!fst||c.status===fst)&&(!fb||c.bookie===fb)&&(!fu||c.user===fu));
+  arr=arr.concat(casArr);
   arr.sort((a,b)=>{
     if(srt==='dd') return b.date.localeCompare(a.date);
     if(srt==='da') return a.date.localeCompare(b.date);
